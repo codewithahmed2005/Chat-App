@@ -28,20 +28,17 @@
             --header-bg: #EDEDED;
             --border: #E0E0E0;
             --text-secondary: #667781;
-            --app-height: 100%;
         }
 
-        /* ========== VIEWPORT FIX FOR MOBILE ========== */
         html, body {
             height: 100%;
-            height: 100dvh; /* Modern browsers */
-            height: -webkit-fill-available; /* Safari fallback */
+            height: 100dvh;
+            height: -webkit-fill-available;
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background: #dadbd3;
         }
 
-        /* ========== APP CONTAINER ========== */
         .app-container {
             display: flex;
             height: 100%;
@@ -71,7 +68,6 @@
             display: none;
         }
 
-        /* Header */
         .sidebar-header {
             background: var(--header-bg);
             padding: 10px 16px;
@@ -127,7 +123,6 @@
             background: rgba(0,0,0,0.1);
         }
 
-        /* Search */
         .search-container {
             padding: 8px 16px;
             background: #f6f6f6;
@@ -158,7 +153,6 @@
             min-width: 0;
         }
 
-        /* Contacts List */
         .contacts-list {
             flex: 1;
             overflow-y: auto;
@@ -260,7 +254,6 @@
             flex-shrink: 0;
         }
 
-        /* Empty State */
         .contacts-empty {
             display: flex;
             flex-direction: column;
@@ -292,7 +285,6 @@
             display: flex;
         }
 
-        /* Chat Header */
         .chat-header {
             background: var(--header-bg);
             padding: 10px 16px;
@@ -364,7 +356,6 @@
             text-overflow: ellipsis;
         }
 
-        /* Messages Container */
         .chat-messages {
             flex: 1;
             overflow-y: auto;
@@ -387,6 +378,9 @@
             line-height: 1.4;
             animation: messageSlide 0.3s ease;
             flex-shrink: 0;
+            cursor: context-menu;
+            user-select: text;
+            -webkit-user-select: text;
         }
 
         @keyframes messageSlide {
@@ -464,53 +458,74 @@
             color: #53bdeb;
         }
 
-        /* Message Actions */
-        .message-actions {
-            position: absolute;
-            top: -32px;
-            right: 0;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            display: none;
-            z-index: 100;
-            overflow: hidden;
-            flex-direction: row;
-            white-space: nowrap;
-        }
-
-        .message:hover .message-actions,
-        .message:active .message-actions {
-            display: flex;
-        }
-
-        .message.sent .message-actions {
-            right: auto;
+        /* ========== CONTEXT MENU (RIGHT CLICK) ========== */
+        .context-menu-overlay {
+            position: fixed;
+            top: 0;
             left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.3);
+            display: none;
+            z-index: 999;
         }
 
-        .action-btn {
-            padding: 8px 12px;
-            border: none;
-            background: none;
-            cursor: pointer;
-            font-size: 13px;
-            color: #333;
+        .context-menu-overlay.active {
+            display: block;
+        }
+
+        .context-menu {
+            position: fixed;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            min-width: 180px;
+            max-width: 250px;
+            z-index: 1000;
+            overflow: hidden;
+            animation: menuPop 0.15s ease;
+        }
+
+        @keyframes menuPop {
+            from { opacity: 0; transform: scale(0.9); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .context-menu-item {
             display: flex;
             align-items: center;
-            gap: 6px;
-            white-space: nowrap;
+            gap: 12px;
+            padding: 14px 18px;
+            cursor: pointer;
+            font-size: 15px;
+            color: #333;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.15s;
         }
 
-        .action-btn:hover, .action-btn:active {
-            background: #f0f0f0;
+        .context-menu-item:last-child {
+            border-bottom: none;
         }
 
-        .action-btn.delete {
+        .context-menu-item:hover, .context-menu-item:active {
+            background: #f5f5f5;
+        }
+
+        .context-menu-item i {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .context-menu-item.delete-item {
             color: #e74c3c;
         }
 
-        /* Reply Banner */
+        .context-menu-item.delete-item i {
+            color: #e74c3c;
+        }
+
+        /* ========== REPLY BANNER ========== */
         .reply-banner {
             background: white;
             padding: 10px 16px;
@@ -552,7 +567,7 @@
             background: rgba(0,0,0,0.1);
         }
 
-        /* Input Area */
+        /* ========== INPUT AREA ========== */
         .input-area {
             padding: 10px 16px;
             background: #f0f0f0;
@@ -601,7 +616,6 @@
             background: var(--primary-dark);
         }
 
-        /* Empty Chat State */
         .chat-empty {
             display: flex;
             flex-direction: column;
@@ -619,7 +633,7 @@
             color: #ddd;
         }
 
-        /* Modal */
+        /* ========== EDIT MODAL ========== */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -630,7 +644,7 @@
             display: none;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 1001;
             padding: 20px;
         }
 
@@ -685,20 +699,6 @@
             color: #333;
         }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #ccc;
-            border-radius: 3px;
-        }
-
         /* ========== DESKTOP ========== */
         @media (min-width: 768px) {
             body {
@@ -747,11 +747,23 @@
             }
         }
 
-        /* ========== SAFARI SPECIFIC FIX ========== */
         @supports (-webkit-touch-callout: none) {
             html, body, .app-container {
                 height: -webkit-fill-available;
             }
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
         }
     </style>
 </head>
@@ -836,7 +848,24 @@
         </div>
     </div>
 
-    <!-- Edit Modal -->
+    <!-- CONTEXT MENU (Right Click / Long Press) -->
+    <div class="context-menu-overlay" id="contextMenuOverlay" onclick="hideContextMenu()"></div>
+    <div class="context-menu" id="contextMenu">
+        <div class="context-menu-item" id="ctxReply" onclick="contextAction('reply')">
+            <i class="fas fa-reply" style="color: var(--primary);"></i>
+            <span>Reply</span>
+        </div>
+        <div class="context-menu-item" id="ctxEdit" onclick="contextAction('edit')">
+            <i class="fas fa-edit" style="color: #3498db;"></i>
+            <span>Edit</span>
+        </div>
+        <div class="context-menu-item delete-item" id="ctxDelete" onclick="contextAction('delete')">
+            <i class="fas fa-trash"></i>
+            <span>Delete</span>
+        </div>
+    </div>
+
+    <!-- EDIT MODAL -->
     <div class="modal-overlay" id="editModal">
         <div class="modal">
             <h3>Edit Message</h3>
@@ -857,6 +886,9 @@
         let contacts = [];
         let editingMessageId = null;
         let replyingTo = null;
+        let contextMessageId = null;
+        let contextMessageContent = null;
+        let contextIsMine = false;
 
         // ==================== INIT ====================
         async function init() {
@@ -886,9 +918,9 @@
             socket.on('new_message', (data) => {
                 if (activeContact && data.sender_id === activeContact.user_id) {
                     appendMessage(data, false);
-                    loadContacts(); // Update last message preview
+                    loadContacts();
                 } else {
-                    loadContacts(); // Update unread count
+                    loadContacts();
                 }
             });
 
@@ -1003,7 +1035,6 @@
             document.getElementById('chatName').textContent = activeContact.display_name;
             document.getElementById('chatAvatar').textContent = activeContact.display_name[0].toUpperCase();
             
-            // Mobile: show chat, hide sidebar
             if (window.innerWidth < 768) {
                 document.getElementById('sidebar').classList.add('hidden-mobile');
                 document.getElementById('chatArea').classList.add('active-mobile');
@@ -1053,6 +1084,12 @@
             div.id = `msg-${msg.id}`;
             if (animate) div.style.animation = 'messageSlide 0.3s ease';
 
+            // Store data for context menu
+            div.dataset.msgId = msg.id;
+            div.dataset.content = msg.content;
+            div.dataset.isMine = isMine;
+            div.dataset.isDeleted = msg.is_deleted;
+
             let html = '';
 
             if (msg.reply_to) {
@@ -1073,33 +1110,113 @@
                 </div>
             `;
 
-            if (isMine && !msg.is_deleted) {
-                html += `
-                    <div class="message-actions">
-                        <button class="action-btn" onclick="replyTo(${msg.id}, '${escapeHtml(msg.content)}')">
-                            <i class="fas fa-reply"></i> Reply
-                        </button>
-                        <button class="action-btn" onclick="editMessage(${msg.id}, '${escapeHtml(msg.content)}')">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button class="action-btn delete" onclick="deleteMessage(${msg.id})">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                    </div>
-                `;
-            } else if (!isMine && !msg.is_deleted) {
-                html += `
-                    <div class="message-actions">
-                        <button class="action-btn" onclick="replyTo(${msg.id}, '${escapeHtml(msg.content)}')">
-                            <i class="fas fa-reply"></i> Reply
-                        </button>
-                    </div>
-                `;
-            }
-
             div.innerHTML = html;
+            
+            // Add context menu events
+            div.addEventListener('contextmenu', handleContextMenu);
+            div.addEventListener('touchstart', handleTouchStart, {passive: true});
+            div.addEventListener('touchend', handleTouchEnd);
+            
             container.appendChild(div);
             scrollToBottom();
+        }
+
+        // ==================== CONTEXT MENU ====================
+        
+        let touchTimer = null;
+        let touchStartTime = 0;
+
+        function handleContextMenu(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            showContextMenu(e.clientX, e.clientY, e.currentTarget);
+        }
+
+        function handleTouchStart(e) {
+            touchStartTime = Date.now();
+            touchTimer = setTimeout(() => {
+                const touch = e.touches[0];
+                showContextMenu(touch.clientX, touch.clientY, e.currentTarget);
+            }, 600); // Long press 600ms
+        }
+
+        function handleTouchEnd(e) {
+            if (touchTimer) {
+                clearTimeout(touchTimer);
+                touchTimer = null;
+            }
+        }
+
+        function showContextMenu(x, y, element) {
+            const msgId = parseInt(element.dataset.msgId);
+            const content = element.dataset.content;
+            const isMine = element.dataset.isMine === 'true';
+            const isDeleted = element.dataset.isDeleted === 'true';
+
+            if (isDeleted) return; // Don't show menu for deleted messages
+
+            contextMessageId = msgId;
+            contextMessageContent = content;
+            contextIsMine = isMine;
+
+            const menu = document.getElementById('contextMenu');
+            const overlay = document.getElementById('contextMenuOverlay');
+            const replyBtn = document.getElementById('ctxReply');
+            const editBtn = document.getElementById('ctxEdit');
+            const deleteBtn = document.getElementById('ctxDelete');
+
+            // Show/hide options based on ownership
+            replyBtn.style.display = 'flex';
+            editBtn.style.display = isMine ? 'flex' : 'none';
+            deleteBtn.style.display = isMine ? 'flex' : 'none';
+
+            // Position menu
+            const menuWidth = 200;
+            const menuHeight = isMine ? 150 : 50; // Approximate
+
+            let posX = x;
+            let posY = y;
+
+            // Keep menu within viewport
+            if (posX + menuWidth > window.innerWidth) {
+                posX = window.innerWidth - menuWidth - 10;
+            }
+            if (posX < 10) posX = 10;
+
+            if (posY + menuHeight > window.innerHeight) {
+                posY = window.innerHeight - menuHeight - 10;
+            }
+            if (posY < 10) posY = 10;
+
+            menu.style.left = posX + 'px';
+            menu.style.top = posY + 'px';
+
+            overlay.classList.add('active');
+            menu.style.display = 'block';
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenuOverlay').classList.remove('active');
+            document.getElementById('contextMenu').style.display = 'none';
+            contextMessageId = null;
+            contextMessageContent = null;
+        }
+
+        function contextAction(action) {
+            if (!contextMessageId) return;
+            
+            switch(action) {
+                case 'reply':
+                    replyTo(contextMessageId, contextMessageContent);
+                    break;
+                case 'edit':
+                    if (contextIsMine) editMessage(contextMessageId, contextMessageContent);
+                    break;
+                case 'delete':
+                    if (contextIsMine) deleteMessage(contextMessageId);
+                    break;
+            }
+            hideContextMenu();
         }
 
         // ==================== MESSAGE ACTIONS ====================
@@ -1169,6 +1286,7 @@
         function updateMessageUI(msgId, content, editedAt) {
             const msgDiv = document.getElementById(`msg-${msgId}`);
             if (msgDiv) {
+                msgDiv.dataset.content = content;
                 const contentDiv = msgDiv.querySelector('.message-content');
                 if (contentDiv) contentDiv.textContent = content;
                 
@@ -1186,10 +1304,9 @@
             const msgDiv = document.getElementById(`msg-${msgId}`);
             if (msgDiv) {
                 msgDiv.classList.add('deleted');
+                msgDiv.dataset.isDeleted = 'true';
                 const content = msgDiv.querySelector('.message-content');
                 if (content) content.textContent = 'This message was deleted';
-                const actions = msgDiv.querySelector('.message-actions');
-                if (actions) actions.remove();
             }
         }
 
@@ -1244,7 +1361,6 @@
             return div.innerHTML;
         }
 
-        // Handle resize
         let resizeTimer;
         window.addEventListener('resize', () => {
             clearTimeout(resizeTimer);
@@ -1253,6 +1369,13 @@
                     document.getElementById('sidebar').classList.remove('hidden-mobile');
                 }
             }, 100);
+        });
+
+        // Prevent default context menu on messages
+        document.addEventListener('contextmenu', (e) => {
+            if (!e.target.closest('.message')) {
+                hideContextMenu();
+            }
         });
 
         // Init
