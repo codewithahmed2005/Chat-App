@@ -14,6 +14,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     display_name = db.Column(db.String(100))
+    about = db.Column(db.String(500), default='Hey there! I am using ChatApp.')
     profile_pic = db.Column(db.String(200), default='default.png')
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     
@@ -36,9 +37,7 @@ class Message(db.Model):
     content = db.Column(db.Text, nullable=False)
     timestamp = db.Column(db.DateTime, server_default=db.func.now())
     is_read = db.Column(db.Boolean, default=False)
-    
-    # NEW: Edit & Reply features
-    is_deleted = db.Column(db.Boolean, default=False)          # Soft delete
-    edited_at = db.Column(db.DateTime, nullable=True)            # Edit timestamp
+    is_deleted = db.Column(db.Boolean, default=False)
+    edited_at = db.Column(db.DateTime, nullable=True)
     reply_to_id = db.Column(db.Integer, db.ForeignKey('message.id'), nullable=True)
     reply_to = db.relationship('Message', remote_side=[id], backref='replies')
