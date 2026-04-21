@@ -1,3 +1,8 @@
+# ==================== EVENTLET MONKEY PATCH (SABSE PEHLE) ====================
+import eventlet
+eventlet.monkey_patch()  # Yeh threading, socket, etc. ko patch karta hai
+# ===========================================================================
+
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -5,18 +10,17 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, Contact, Message
 import os
 
-# ==================== CREATE APP FACTORY ====================
+# ==================== CREATE APP ====================
 
 def create_app():
     app = Flask(__name__)
     
-    # Secret key from environment (Render pe set karna hai!)
+    # Secret key from environment
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'fallback-dev-key-only')
     
     # Database: PostgreSQL on Render, SQLite locally
     database_url = os.environ.get('DATABASE_URL')
     if database_url:
-        # Render gives 'postgres://', SQLAlchemy needs 'postgresql://'
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql://', 1)
         app.config['SQLALCHEMY_DATABASE_URI'] = database_url
@@ -28,13 +32,12 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     
-    # ========== FIX 1: CREATE TABLES ON STARTUP ==========
+    # Create tables on startup
     with app.app_context():
         db.create_all()
         print("✅ Database tables created!")
-    # =====================================================
     
-    # SocketIO with eventlet (for Render WebSocket support)
+    # SocketIO with eventlet
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
     
     login_manager = LoginManager()
@@ -56,13 +59,11 @@ def create_app():
         if request.method == 'POST':
             data = request.get_json()
             
-            # Validation
             if User.query.filter_by(username=data['username']).first():
                 return jsonify({'error': 'Username already exists'}), 400
             if User.query.filter_by(email=data['email']).first():
                 return jsonify({'error': 'Email already exists'}), 400
             
-            # Create user
             user = User(
                 username=data['username'],
                 email=data['email'],
@@ -114,7 +115,7 @@ def create_app():
     def chat(contact_user_id):
         return render_template('chat.html', contact_user_id=contact_user_id)
     
-    # ==================== API ENDPOINTS ====================
+    # ==================== API ====================
     
     @app.route('/api/me')
     @login_required
@@ -253,7 +254,7 @@ def create_app():
     return app, socketio
 
 
-# ==================== GLOBAL INSTANCE FOR GUNICORN ====================
+# ==================== GLOBAL INSTANCE ====================
 
 app, socketio = create_app()
 
