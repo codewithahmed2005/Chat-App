@@ -458,7 +458,7 @@
             color: #53bdeb;
         }
 
-        /* ========== CONTEXT MENU (RIGHT CLICK) ========== */
+        /* ========== CONTEXT MENU ========== */
         .context-menu-overlay {
             position: fixed;
             top: 0;
@@ -483,7 +483,12 @@
             max-width: 250px;
             z-index: 1000;
             overflow: hidden;
+            display: none;
             animation: menuPop 0.15s ease;
+        }
+
+        .context-menu.show {
+            display: block;
         }
 
         @keyframes menuPop {
@@ -848,7 +853,7 @@
         </div>
     </div>
 
-    <!-- CONTEXT MENU (Right Click / Long Press) -->
+    <!-- CONTEXT MENU -->
     <div class="context-menu-overlay" id="contextMenuOverlay" onclick="hideContextMenu()"></div>
     <div class="context-menu" id="contextMenu">
         <div class="context-menu-item" id="ctxReply" onclick="contextAction('reply')">
@@ -892,6 +897,9 @@
 
         // ==================== INIT ====================
         async function init() {
+            // FORCE HIDE MENU ON PAGE LOAD
+            hideContextMenu();
+            
             const res = await fetch('/api/me');
             if (!res.ok) {
                 window.location.href = '/login';
@@ -1084,7 +1092,6 @@
             div.id = `msg-${msg.id}`;
             if (animate) div.style.animation = 'messageSlide 0.3s ease';
 
-            // Store data for context menu
             div.dataset.msgId = msg.id;
             div.dataset.content = msg.content;
             div.dataset.isMine = isMine;
@@ -1112,7 +1119,6 @@
 
             div.innerHTML = html;
             
-            // Add context menu events
             div.addEventListener('contextmenu', handleContextMenu);
             div.addEventListener('touchstart', handleTouchStart, {passive: true});
             div.addEventListener('touchend', handleTouchEnd);
@@ -1124,7 +1130,6 @@
         // ==================== CONTEXT MENU ====================
         
         let touchTimer = null;
-        let touchStartTime = 0;
 
         function handleContextMenu(e) {
             e.preventDefault();
@@ -1133,11 +1138,10 @@
         }
 
         function handleTouchStart(e) {
-            touchStartTime = Date.now();
             touchTimer = setTimeout(() => {
                 const touch = e.touches[0];
                 showContextMenu(touch.clientX, touch.clientY, e.currentTarget);
-            }, 600); // Long press 600ms
+            }, 600);
         }
 
         function handleTouchEnd(e) {
@@ -1153,7 +1157,7 @@
             const isMine = element.dataset.isMine === 'true';
             const isDeleted = element.dataset.isDeleted === 'true';
 
-            if (isDeleted) return; // Don't show menu for deleted messages
+            if (isDeleted) return;
 
             contextMessageId = msgId;
             contextMessageContent = content;
@@ -1165,19 +1169,16 @@
             const editBtn = document.getElementById('ctxEdit');
             const deleteBtn = document.getElementById('ctxDelete');
 
-            // Show/hide options based on ownership
             replyBtn.style.display = 'flex';
             editBtn.style.display = isMine ? 'flex' : 'none';
             deleteBtn.style.display = isMine ? 'flex' : 'none';
 
-            // Position menu
             const menuWidth = 200;
-            const menuHeight = isMine ? 150 : 50; // Approximate
+            const menuHeight = isMine ? 150 : 50;
 
             let posX = x;
             let posY = y;
 
-            // Keep menu within viewport
             if (posX + menuWidth > window.innerWidth) {
                 posX = window.innerWidth - menuWidth - 10;
             }
@@ -1192,12 +1193,16 @@
             menu.style.top = posY + 'px';
 
             overlay.classList.add('active');
-            menu.style.display = 'block';
+            menu.classList.add('show');
         }
 
         function hideContextMenu() {
-            document.getElementById('contextMenuOverlay').classList.remove('active');
-            document.getElementById('contextMenu').style.display = 'none';
+            const overlay = document.getElementById('contextMenuOverlay');
+            const menu = document.getElementById('contextMenu');
+            
+            overlay.classList.remove('active');
+            menu.classList.remove('show');
+            
             contextMessageId = null;
             contextMessageContent = null;
         }
@@ -1371,7 +1376,6 @@
             }, 100);
         });
 
-        // Prevent default context menu on messages
         document.addEventListener('contextmenu', (e) => {
             if (!e.target.closest('.message')) {
                 hideContextMenu();
