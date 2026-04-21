@@ -68,6 +68,7 @@
             display: none;
         }
 
+        /* ========== SIDEBAR HEADER ========== */
         .sidebar-header {
             background: var(--header-bg);
             padding: 10px 16px;
@@ -84,6 +85,11 @@
             align-items: center;
             gap: 12px;
             min-width: 0;
+            cursor: pointer;
+        }
+
+        .user-info:active {
+            opacity: 0.7;
         }
 
         .avatar {
@@ -98,21 +104,27 @@
             font-size: 18px;
             font-weight: 600;
             flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .header-actions {
             display: flex;
-            gap: 20px;
+            gap: 8px;
             color: var(--text-secondary);
             font-size: 20px;
-            flex-shrink: 0;
         }
 
         .header-actions i {
             cursor: pointer;
-            padding: 5px;
-            width: 36px;
-            height: 36px;
+            padding: 8px;
+            width: 40px;
+            height: 40px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -123,6 +135,7 @@
             background: rgba(0,0,0,0.1);
         }
 
+        /* ========== SEARCH ========== */
         .search-container {
             padding: 8px 16px;
             background: #f6f6f6;
@@ -153,6 +166,7 @@
             min-width: 0;
         }
 
+        /* ========== CONTACTS LIST ========== */
         .contacts-list {
             flex: 1;
             overflow-y: auto;
@@ -188,6 +202,13 @@
             color: #555;
             margin-right: 15px;
             flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .contact-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .contact-details {
@@ -327,6 +348,7 @@
             gap: 12px;
             min-width: 0;
             flex: 1;
+            cursor: pointer;
         }
 
         .chat-user-info .avatar {
@@ -638,6 +660,271 @@
             color: #ddd;
         }
 
+        /* ========== PROFILE PANEL ========== */
+        .profile-panel {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--sidebar-bg);
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .profile-panel.active {
+            display: flex;
+        }
+
+        .profile-header {
+            background: var(--primary);
+            color: white;
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .profile-header h2 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .profile-back {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .profile-content {
+            flex: 1;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .profile-section {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: var(--primary);
+            color: white;
+        }
+
+        .profile-pic-large {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: white;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .profile-pic-large img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .profile-pic-edit {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            text-align: center;
+            padding: 8px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .profile-name-large {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .profile-id {
+            font-size: 14px;
+            opacity: 0.9;
+            font-family: monospace;
+            letter-spacing: 1px;
+        }
+
+        .profile-fields {
+            padding: 16px;
+        }
+
+        .field-group {
+            margin-bottom: 20px;
+        }
+
+        .field-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .field-value {
+            font-size: 16px;
+            color: #111;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .field-value input, .field-value textarea {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 16px;
+            font-family: inherit;
+            resize: none;
+            background: transparent;
+        }
+
+        .field-value textarea {
+            min-height: 60px;
+        }
+
+        .field-edit-icon {
+            color: var(--primary);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px;
+        }
+
+        .field-edit-icon:active {
+            opacity: 0.7;
+        }
+
+        .profile-save-btn {
+            margin: 20px 16px;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            width: calc(100% - 32px);
+        }
+
+        .profile-save-btn:active {
+            background: var(--primary-dark);
+        }
+
+        .profile-save-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* ========== CONTACT INFO PANEL ========== */
+        .contact-info-panel {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 100%;
+            height: 100%;
+            background: var(--sidebar-bg);
+            z-index: 1500;
+            display: flex;
+            flex-direction: column;
+            transition: right 0.3s ease;
+            overflow: hidden;
+        }
+
+        .contact-info-panel.active {
+            right: 0;
+        }
+
+        .contact-info-header {
+            background: var(--header-bg);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+        }
+
+        .contact-info-content {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .contact-info-section {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: var(--header-bg);
+        }
+
+        .contact-info-pic {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: #dfe5e7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 16px;
+        }
+
+        .contact-info-name {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .contact-info-id {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        .contact-info-about {
+            padding: 20px 16px;
+        }
+
+        .about-label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .about-text {
+            font-size: 16px;
+            color: #111;
+            line-height: 1.5;
+        }
+
         /* ========== EDIT MODAL ========== */
         .modal-overlay {
             position: fixed;
@@ -750,6 +1037,21 @@
             .message {
                 max-width: 65%;
             }
+
+            .profile-panel {
+                width: 360px;
+                left: 0;
+                border-right: 1px solid var(--border);
+            }
+
+            .contact-info-panel {
+                width: 360px;
+                right: -360px;
+            }
+
+            .contact-info-panel.active {
+                right: 0;
+            }
         }
 
         @supports (-webkit-touch-callout: none) {
@@ -777,7 +1079,7 @@
         <!-- SIDEBAR -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <div class="user-info">
+                <div class="user-info" onclick="showProfile()">
                     <div class="avatar" id="myAvatar">M</div>
                     <div style="min-width: 0;">
                         <div style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" id="myName">Me</div>
@@ -785,8 +1087,9 @@
                     </div>
                 </div>
                 <div class="header-actions">
-                    <i class="fas fa-user-plus" onclick="showAddContact()"></i>
-                    <i class="fas fa-ellipsis-v"></i>
+                    <i class="fas fa-sync-alt" onclick="refreshContacts()" title="Refresh"></i>
+                    <i class="fas fa-user-plus" onclick="showAddContact()" title="Add Contact"></i>
+                    <i class="fas fa-ellipsis-v" onclick="showProfile()" title="Profile"></i>
                 </div>
             </div>
 
@@ -812,7 +1115,7 @@
                     <div class="back-btn" onclick="closeChat()">
                         <i class="fas fa-arrow-left"></i>
                     </div>
-                    <div class="chat-user-info">
+                    <div class="chat-user-info" onclick="showContactInfo()">
                         <div class="avatar" id="chatAvatar">C</div>
                         <div class="chat-user-details">
                             <div class="chat-user-name" id="chatName">Select Contact</div>
@@ -822,7 +1125,7 @@
                 </div>
                 <div class="header-actions">
                     <i class="fas fa-search"></i>
-                    <i class="fas fa-ellipsis-v"></i>
+                    <i class="fas fa-ellipsis-v" onclick="showContactInfo()"></i>
                 </div>
             </div>
 
@@ -849,6 +1152,86 @@
                 <button class="btn-send" onclick="sendMessage()">
                     <i class="fas fa-paper-plane"></i>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROFILE PANEL -->
+    <div class="profile-panel" id="profilePanel">
+        <div class="profile-header">
+            <div class="profile-back" onclick="hideProfile()">
+                <i class="fas fa-arrow-left"></i>
+            </div>
+            <h2>Profile</h2>
+        </div>
+        <div class="profile-content">
+            <div class="profile-section">
+                <div class="profile-pic-large" id="profilePicLarge">
+                    <span id="profilePicInitial">M</span>
+                    <div class="profile-pic-edit" onclick="changeProfilePic()">
+                        <i class="fas fa-camera"></i> CHANGE
+                    </div>
+                </div>
+                <div class="profile-name-large" id="profileNameLarge">Me</div>
+                <div class="profile-id" id="profileIdDisplay">ID: ...</div>
+            </div>
+
+            <div class="profile-fields">
+                <div class="field-group">
+                    <div class="field-label">Name</div>
+                    <div class="field-value">
+                        <input type="text" id="profileNameInput" placeholder="Your name" maxlength="100">
+                        <i class="fas fa-pen field-edit-icon" onclick="focusField('profileNameInput')"></i>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <div class="field-label">Username</div>
+                    <div class="field-value">
+                        <input type="text" id="profileUsernameInput" placeholder="Username" maxlength="80">
+                        <i class="fas fa-pen field-edit-icon" onclick="focusField('profileUsernameInput')"></i>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <div class="field-label">About</div>
+                    <div class="field-value">
+                        <textarea id="profileAboutInput" placeholder="About" maxlength="500"></textarea>
+                        <i class="fas fa-pen field-edit-icon" onclick="focusField('profileAboutInput')"></i>
+                    </div>
+                </div>
+
+                <div class="field-group">
+                    <div class="field-label">Email</div>
+                    <div class="field-value" style="color: var(--text-secondary);" id="profileEmailDisplay">
+                        email@example.com
+                    </div>
+                </div>
+
+                <button class="profile-save-btn" id="saveProfileBtn" onclick="saveProfile()">
+                    <i class="fas fa-save"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTACT INFO PANEL -->
+    <div class="contact-info-panel" id="contactInfoPanel">
+        <div class="contact-info-header">
+            <div class="back-btn" onclick="hideContactInfo()" style="display: flex;">
+                <i class="fas fa-arrow-left"></i>
+            </div>
+            <div style="font-weight: 600;">Contact Info</div>
+        </div>
+        <div class="contact-info-content">
+            <div class="contact-info-section">
+                <div class="contact-info-pic" id="contactInfoPic">C</div>
+                <div class="contact-info-name" id="contactInfoName">Contact</div>
+                <div class="contact-info-id" id="contactInfoId">ID: ...</div>
+            </div>
+            <div class="contact-info-about">
+                <div class="about-label">About</div>
+                <div class="about-text" id="contactInfoAbout">Hey there! I am using ChatApp.</div>
             </div>
         </div>
     </div>
@@ -897,7 +1280,6 @@
 
         // ==================== INIT ====================
         async function init() {
-            // FORCE HIDE MENU ON PAGE LOAD
             hideContextMenu();
             
             const res = await fetch('/api/me');
@@ -906,12 +1288,16 @@
                 return;
             }
             currentUser = await res.json();
+            
+            updateSidebarUser();
+            loadContacts();
+            connectSocket();
+        }
+
+        function updateSidebarUser() {
             document.getElementById('myName').textContent = currentUser.display_name;
             document.getElementById('myId').textContent = `ID: ${currentUser.user_id}`;
             document.getElementById('myAvatar').textContent = currentUser.display_name[0].toUpperCase();
-            
-            loadContacts();
-            connectSocket();
         }
 
         // ==================== SOCKET ====================
@@ -953,6 +1339,95 @@
                     }, 2000);
                 }
             });
+        }
+
+        // ==================== REFRESH ====================
+        function refreshContacts() {
+            const icon = document.querySelector('.fa-sync-alt');
+            icon.style.animation = 'spin 1s linear infinite';
+            loadContacts().then(() => {
+                setTimeout(() => {
+                    icon.style.animation = '';
+                }, 500);
+            });
+        }
+
+        // ==================== PROFILE ====================
+        function showProfile() {
+            document.getElementById('profileNameLarge').textContent = currentUser.display_name;
+            document.getElementById('profileIdDisplay').textContent = `ID: ${currentUser.user_id}`;
+            document.getElementById('profilePicInitial').textContent = currentUser.display_name[0].toUpperCase();
+            
+            document.getElementById('profileNameInput').value = currentUser.display_name || '';
+            document.getElementById('profileUsernameInput').value = currentUser.username || '';
+            document.getElementById('profileAboutInput').value = currentUser.about || '';
+            document.getElementById('profileEmailDisplay').textContent = currentUser.email || '';
+            
+            document.getElementById('profilePanel').classList.add('active');
+        }
+
+        function hideProfile() {
+            document.getElementById('profilePanel').classList.remove('active');
+        }
+
+        function focusField(fieldId) {
+            document.getElementById(fieldId).focus();
+        }
+
+        function changeProfilePic() {
+            alert('Profile picture upload coming soon! For now, use emoji initials.');
+        }
+
+        async function saveProfile() {
+            const btn = document.getElementById('saveProfileBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+            const data = {
+                display_name: document.getElementById('profileNameInput').value.trim(),
+                username: document.getElementById('profileUsernameInput').value.trim(),
+                about: document.getElementById('profileAboutInput').value.trim()
+            };
+
+            try {
+                const res = await fetch('/api/me', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    const result = await res.json();
+                    currentUser = {...currentUser, ...result};
+                    updateSidebarUser();
+                    hideProfile();
+                    alert('Profile updated!');
+                } else {
+                    const err = await res.json();
+                    alert(err.error || 'Failed to update');
+                }
+            } catch (err) {
+                alert('Network error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-save"></i> Save Changes';
+            }
+        }
+
+        // ==================== CONTACT INFO ====================
+        async function showContactInfo() {
+            if (!activeContact) return;
+            
+            document.getElementById('contactInfoPic').textContent = activeContact.display_name[0].toUpperCase();
+            document.getElementById('contactInfoName').textContent = activeContact.display_name;
+            document.getElementById('contactInfoId').textContent = `ID: ${activeContact.user_id}`;
+            document.getElementById('contactInfoAbout').textContent = activeContact.about || 'Hey there! I am using ChatApp.';
+            
+            document.getElementById('contactInfoPanel').classList.add('active');
+        }
+
+        function hideContactInfo() {
+            document.getElementById('contactInfoPanel').classList.remove('active');
         }
 
         // ==================== CONTACTS ====================
@@ -1381,6 +1856,16 @@
                 hideContextMenu();
             }
         });
+
+        // Add spin animation for refresh
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+        `;
+        document.head.appendChild(style);
 
         // Init
         init();
