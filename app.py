@@ -11,7 +11,7 @@ from datetime import datetime
 
 def create_app():
     app = Flask(__name__)
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key')
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'fallback-dev-key-only')
     
     database_url = os.environ.get('DATABASE_URL')
     if database_url:
@@ -84,7 +84,8 @@ def create_app():
             username=data['username'],
             email=data['email'],
             password_hash=generate_password_hash(data['password']),
-            display_name=data.get('display_name', data['username'])
+            display_name=data.get('display_name', data['username']),
+            about='Hey there! I am using ChatApp.'
         )
         db.session.add(user)
         db.session.commit()
@@ -110,16 +111,60 @@ def create_app():
         
         return jsonify({'error': 'Invalid credentials'}), 401
     
-    # ==================== API USER ====================
+    # ==================== API USER / PROFILE ====================
     
     @app.route('/api/me')
     @login_required
     def get_me():
         return jsonify({
+            'id': current_user.id,
             'user_id': current_user.user_id,
             'username': current_user.username,
             'display_name': current_user.display_name,
-            'email': current_user.email
+            'email': current_user.email,
+            'about': current_user.about or 'Hey there! I am using ChatApp.',
+            'profile_pic': current_user.profile_pic or 'default.png'
+        })
+    
+    @app.route('/api/me', methods=['PUT'])
+    @login_required
+    def update_profile():
+        data = request.get_json()
+        
+        # Check username uniqueness if changed
+        if data.get('username') and data['username'] != current_user.username:
+            if User.query.filter_by(username=data['username']).first():
+                return jsonify({'error': 'Username already taken'}), 400
+            current_user.username = data['username']
+        
+        # Update fields
+        if data.get('display_name'):
+            current_user.display_name = data['display_name']
+        if data.get('about') is not None:
+            current_user.about = data['about']
+        if data.get('profile_pic'):
+            current_user.profile_pic = data['profile_pic']
+        
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Profile updated',
+            'user_id': current_user.user_id,
+            'username': current_user.username,
+            'display_name': current_user.display_name,
+            'about': current_user.about
+        })
+    
+    @app.route('/api/users/<user_id>')
+    @login_required
+    def get_user_profile(user_id):
+        user = User.query.filter_by(user_id=user_id).first_or_404()
+        return jsonify({
+            'user_id': user.user_id,
+            'display_name': user.display_name,
+            'username': user.username,
+            'about': user.about or 'Hey there! I am using ChatApp.',
+            'profile_pic': user.profile_pic or 'default.png'
         })
     
     # ==================== API CONTACTS ====================
@@ -148,17 +193,16 @@ def create_app():
             db.session.add_all([c1, c2])
             db.session.commit()
             
-            # Get last message for this contact
             last_msg = get_last_message(current_user.id, target_user.id)
             
             return jsonify({
                 'user_id': target_user.user_id,
                 'display_name': target_user.display_name,
                 'username': target_user.username,
+                'about': target_user.about,
                 'last_message': last_msg
             }), 201
         
-        # GET contacts with last message
         user_contacts = Contact.query.filter_by(user_id=current_user.id).all()
         result = []
         for c in user_contacts:
@@ -173,11 +217,11 @@ def create_app():
                 'user_id': c.contact_user.user_id,
                 'display_name': c.contact_user.display_name,
                 'username': c.contact_user.username,
+                'about': c.contact_user.about,
                 'last_message': last_msg,
                 'unread_count': unread_count
             })
         
-        # Sort by last message time
         result.sort(key=lambda x: x['last_message']['timestamp'] if x['last_message'] else '', reverse=True)
         return jsonify(result)
     
@@ -203,7 +247,6 @@ def create_app():
     def get_messages(contact_user_id):
         contact = User.query.filter_by(user_id=contact_user_id).first_or_404()
         
-        # Mark messages as read
         unread = Message.query.filter_by(
             sender_id=contact.id,
             receiver_id=current_user.id,
@@ -233,8 +276,6 @@ def create_app():
             } if m.reply_to else None
         } for m in messages])
     
-    # ==================== NEW: EDIT MESSAGE ====================
-    
     @app.route('/api/messages/<int:message_id>/edit', methods=['PUT'])
     @login_required
     def edit_message(message_id):
@@ -256,7 +297,6 @@ def create_app():
         msg.edited_at = datetime.utcnow()
         db.session.commit()
         
-        # Notify receiver via socket
         receiver = User.query.get(msg.receiver_id)
         emit('message_edited', {
             'id': msg.id,
@@ -265,8 +305,6 @@ def create_app():
         }, room=f"user_{receiver.id}", namespace='/')
         
         return jsonify({'message': 'Edited successfully'})
-    
-    # ==================== NEW: DELETE MESSAGE ====================
     
     @app.route('/api/messages/<int:message_id>', methods=['DELETE'])
     @login_required
@@ -279,7 +317,6 @@ def create_app():
         msg.is_deleted = True
         db.session.commit()
         
-        # Notify receiver
         receiver = User.query.get(msg.receiver_id)
         emit('message_deleted', {
             'id': msg.id
@@ -315,7 +352,6 @@ def create_app():
             emit('error', {'message': 'Receiver not found'})
             return
         
-        # Handle reply
         reply_msg = None
         if reply_to_id:
             reply_msg = Message.query.get(reply_to_id)
