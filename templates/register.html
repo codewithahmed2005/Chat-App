@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Create Account{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <h1>📱 Create Account</h1>
+        <p class="subtitle">Get your unique Chat ID</p>
+        
+        <form id="registerForm">
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" id="displayName" required placeholder="John Doe">
+            </div>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="username" required placeholder="johndoe">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="email" required placeholder="john@example.com">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" required placeholder="••••••••">
+            </div>
+            <button type="submit" class="btn-primary">Create Account</button>
+        </form>
+        
+        <div id="result" class="result-box hidden">
+            <div class="success-icon">✅</div>
+            <h3>Account Created!</h3>
+            <p>Your Chat ID is:</p>
+            <div class="user-id-display" id="userIdDisplay"></div>
+            <p class="hint">Share this ID with friends so they can add you!</p>
+            <a href="/login" class="btn-secondary">Go to Login</a>
+        </div>
+        
+        <p class="auth-link">Already have an account? <a href="/login">Login</a></p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    const data = {
+        display_name: document.getElementById('displayName').value,
+        username: document.getElementById('username').value,
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value
+    };
+    
+    try {
+        const res = await fetch('/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        
+        const result = await res.json();
+        
+        if (res.ok) {
+            document.getElementById('registerForm').classList.add('hidden');
+            document.getElementById('result').classList.remove('hidden');
+            document.getElementById('userIdDisplay').textContent = result.user_id;
+        } else {
+            alert(result.error || 'Registration failed');
+        }
+    } catch (err) {
+        alert('Network error');
+    }
+});
+</script>
+{% endblock %}

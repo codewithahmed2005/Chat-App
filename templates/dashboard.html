@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="user-header">
+            <div class="avatar">👤</div>
+            <div class="user-info">
+                <h3 id="myName">Loading...</h3>
+                <p class="user-id" id="myId">ID: ...</p>
+            </div>
+            <button onclick="logout()" class="btn-icon">🚪</button>
+        </div>
+        
+        <div class="add-contact-section">
+            <h4>Add Contact</h4>
+            <div class="add-contact-form">
+                <input type="text" id="contactId" placeholder="Enter Chat ID (10 digits)">
+                <button onclick="addContact()" class="btn-add">➕</button>
+            </div>
+            <p id="addContactMsg" class="msg"></p>
+        </div>
+        
+        <div class="contacts-list" id="contactsList">
+            <p class="empty-state">No contacts yet. Add someone!</p>
+        </div>
+    </div>
+    
+    <!-- Main Area -->
+    <div class="main-area">
+        <div class="welcome-screen">
+            <div class="welcome-content">
+                <h1>💬 ChatApp</h1>
+                <p>Select a contact to start messaging</p>
+                <div class="features">
+                    <div class="feature">🔒 End-to-end encrypted feel</div>
+                    <div class="feature">⚡ Real-time messaging</div>
+                    <div class="feature">🆔 Unique ID system</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentUser = null;
+
+// Load user info
+async function loadUser() {
+    const res = await fetch('/api/me');
+    if (!res.ok) {
+        window.location.href = '/login';
+        return;
+    }
+    currentUser = await res.json();
+    document.getElementById('myName').textContent = currentUser.display_name;
+    document.getElementById('myId').textContent = `ID: ${currentUser.user_id}`;
+    loadContacts();
+}
+
+// Load contacts
+async function loadContacts() {
+    const res = await fetch('/api/contacts');
+    const contacts = await res.json();
+    const list = document.getElementById('contactsList');
+    
+    if (contacts.length === 0) {
+        list.innerHTML = '<p class="empty-state">No contacts yet. Add someone!</p>';
+        return;
+    }
+    
+    list.innerHTML = contacts.map(c => `
+        <div class="contact-item" onclick="openChat('${c.user_id}')">
+            <div class="contact-avatar">${c.display_name[0].toUpperCase()}</div>
+            <div class="contact-info">
+                <h4>${c.display_name}</h4>
+                <p>@${c.username}</p>
+            </div>
+            <div class="contact-id">${c.user_id}</div>
+        </div>
+    `).join('');
+}
+
+// Add contact
+async function addContact() {
+    const userId = document.getElementById('contactId').value.trim();
+    const msgEl = document.getElementById('addContactMsg');
+    
+    if (!userId || userId.length !== 10) {
+        msgEl.textContent = 'Please enter a valid 10-digit ID';
+        msgEl.className = 'msg error';
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/contacts', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_id: userId})
+        });
+        
+        const result = await res.json();
+        
+        if (res.ok) {
+            msgEl.textContent = `Added ${result.contact.display_name}!`;
+            msgEl.className = 'msg success';
+            document.getElementById('contactId').value = '';
+            loadContacts();
+        } else {
+            msgEl.textContent = result.error;
+            msgEl.className = 'msg error';
+        }
+    } catch (err) {
+        msgEl.textContent = 'Network error';
+        msgEl.className = 'msg error';
+    }
+}
+
+function openChat(userId) {
+    window.location.href = `/chat/${userId}`;
+}
+
+function logout() {
+    window.location.href = '/logout';
+}
+
+// Initialize
+loadUser();
+</script>
+{% endblock %}
