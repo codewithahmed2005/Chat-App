@@ -68,7 +68,6 @@
             display: none;
         }
 
-        /* ========== SIDEBAR HEADER ========== */
         .sidebar-header {
             background: var(--header-bg);
             padding: 10px 16px;
@@ -101,16 +100,10 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
             flex-shrink: 0;
             overflow: hidden;
-        }
-
-        .avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
         }
 
         .header-actions {
@@ -135,7 +128,6 @@
             background: rgba(0,0,0,0.1);
         }
 
-        /* ========== SEARCH ========== */
         .search-container {
             padding: 8px 16px;
             background: #f6f6f6;
@@ -166,7 +158,6 @@
             min-width: 0;
         }
 
-        /* ========== CONTACTS LIST ========== */
         .contacts-list {
             flex: 1;
             overflow-y: auto;
@@ -197,18 +188,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 24px;
             font-weight: 600;
             color: #555;
             margin-right: 15px;
             flex-shrink: 0;
             overflow: hidden;
-        }
-
-        .contact-avatar img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
         }
 
         .contact-details {
@@ -727,17 +712,12 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 48px;
+            font-size: 60px;
             font-weight: 600;
             margin-bottom: 16px;
             position: relative;
             overflow: hidden;
-        }
-
-        .profile-pic-large img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+            cursor: pointer;
         }
 
         .profile-pic-edit {
@@ -840,6 +820,106 @@
             cursor: not-allowed;
         }
 
+        /* ========== EMOJI PICKER ========== */
+        .emoji-picker-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            z-index: 3000;
+        }
+
+        .emoji-picker-overlay.active {
+            display: block;
+        }
+
+        .emoji-picker {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 20px 20px 0 0;
+            z-index: 3001;
+            display: none;
+            flex-direction: column;
+            max-height: 70vh;
+            animation: slideUp 0.3s ease;
+        }
+
+        .emoji-picker.active {
+            display: flex;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .emoji-picker-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .emoji-picker-header h3 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .emoji-picker-header i {
+            font-size: 20px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .emoji-picker-header i:active {
+            background: rgba(0,0,0,0.1);
+        }
+
+        .emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 8px;
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .emoji-item {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: background 0.2s;
+            padding: 8px;
+        }
+
+        .emoji-item:hover, .emoji-item:active {
+            background: #f0f0f0;
+        }
+
+        .emoji-picker-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+        }
+
         /* ========== CONTACT INFO PANEL ========== */
         .contact-info-panel {
             position: fixed;
@@ -889,7 +969,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 60px;
+            font-size: 72px;
             font-weight: 600;
             color: #555;
             margin-bottom: 16px;
@@ -1052,6 +1132,23 @@
             .contact-info-panel.active {
                 right: 0;
             }
+
+            .emoji-picker {
+                width: 400px;
+                left: 50%;
+                transform: translateX(-50%);
+                bottom: auto;
+                top: 50%;
+                transform: translate(-50%, -50%);
+                border-radius: 16px;
+                max-height: 500px;
+                animation: fadeIn 0.2s ease;
+            }
+
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+                to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            }
         }
 
         @supports (-webkit-touch-callout: none) {
@@ -1166,9 +1263,9 @@
         </div>
         <div class="profile-content">
             <div class="profile-section">
-                <div class="profile-pic-large" id="profilePicLarge">
-                    <span id="profilePicInitial">M</span>
-                    <div class="profile-pic-edit" onclick="changeProfilePic()">
+                <div class="profile-pic-large" id="profilePicLarge" onclick="showEmojiPicker()">
+                    <span id="profilePicInitial" style="font-size: 60px;">M</span>
+                    <div class="profile-pic-edit">
                         <i class="fas fa-camera"></i> CHANGE
                     </div>
                 </div>
@@ -1212,6 +1309,19 @@
                     <i class="fas fa-save"></i> Save Changes
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- EMOJI PICKER -->
+    <div class="emoji-picker-overlay" id="emojiPickerOverlay" onclick="hideEmojiPicker()"></div>
+    <div class="emoji-picker" id="emojiPicker">
+        <div class="emoji-picker-header">
+            <h3>Choose Profile Picture</h3>
+            <i class="fas fa-times" onclick="hideEmojiPicker()"></i>
+        </div>
+        <div class="emoji-grid" id="emojiGrid"></div>
+        <div class="emoji-picker-footer">
+            <button class="modal-btn secondary" onclick="hideEmojiPicker()">Cancel</button>
         </div>
     </div>
 
@@ -1278,6 +1388,22 @@
         let contextMessageContent = null;
         let contextIsMine = false;
 
+        // ==================== EMOJI LIST ====================
+        const PROFILE_EMOJIS = [
+            '😀', '😎', '🤠', '🥳', '🤩', '🥸',
+            '👨', '👩', '👦', '👧', '🧑', '👴',
+            '🦁', '🐯', '🐶', '🐱', '🐼', '🐨',
+            '🦊', '🐷', '🐸', '🐙', '🦄', '🐲',
+            '🤖', '👽', '👻', '💀', '👺', '👹',
+            '💪', '🧠', '❤️', '🔥', '⭐', '🌟',
+            '🎵', '🎮', '📱', '💻', '🔋', '💡',
+            '🚀', '🛸', '🚁', '✈️', '🚢', '🚗',
+            '🌍', '🌙', '☀️', '⚡', '❄️', '🌈',
+            '🍎', '🍕', '🍔', '🍟', '🍦', '🍰',
+            '⚽', '🏀', '🏈', '⚾', '🎾', '🏐',
+            '🎨', '🎭', '🎪', '🎯', '🎲', '🎰'
+        ];
+
         // ==================== INIT ====================
         async function init() {
             hideContextMenu();
@@ -1295,9 +1421,10 @@
         }
 
         function updateSidebarUser() {
+            const pic = currentUser.profile_pic || currentUser.display_name[0].toUpperCase();
             document.getElementById('myName').textContent = currentUser.display_name;
             document.getElementById('myId').textContent = `ID: ${currentUser.user_id}`;
-            document.getElementById('myAvatar').textContent = currentUser.display_name[0].toUpperCase();
+            document.getElementById('myAvatar').textContent = pic;
         }
 
         // ==================== SOCKET ====================
@@ -1354,9 +1481,10 @@
 
         // ==================== PROFILE ====================
         function showProfile() {
+            const pic = currentUser.profile_pic || currentUser.display_name[0].toUpperCase();
             document.getElementById('profileNameLarge').textContent = currentUser.display_name;
             document.getElementById('profileIdDisplay').textContent = `ID: ${currentUser.user_id}`;
-            document.getElementById('profilePicInitial').textContent = currentUser.display_name[0].toUpperCase();
+            document.getElementById('profilePicInitial').textContent = pic;
             
             document.getElementById('profileNameInput').value = currentUser.display_name || '';
             document.getElementById('profileUsernameInput').value = currentUser.username || '';
@@ -1374,8 +1502,46 @@
             document.getElementById(fieldId).focus();
         }
 
-        function changeProfilePic() {
-            alert('Profile picture upload coming soon! For now, use emoji initials.');
+        // ==================== EMOJI PICKER ====================
+        function showEmojiPicker() {
+            const grid = document.getElementById('emojiGrid');
+            grid.innerHTML = PROFILE_EMOJIS.map(emoji => `
+                <div class="emoji-item" onclick="selectEmoji('${emoji}')">${emoji}</div>
+            `).join('');
+            
+            document.getElementById('emojiPickerOverlay').classList.add('active');
+            document.getElementById('emojiPicker').classList.add('active');
+        }
+
+        function hideEmojiPicker() {
+            document.getElementById('emojiPickerOverlay').classList.remove('active');
+            document.getElementById('emojiPicker').classList.remove('active');
+        }
+
+        function selectEmoji(emoji) {
+            document.getElementById('profilePicInitial').textContent = emoji;
+            document.getElementById('myAvatar').textContent = emoji;
+            
+            saveProfilePic(emoji);
+            hideEmojiPicker();
+        }
+
+        async function saveProfilePic(emoji) {
+            try {
+                const res = await fetch('/api/me', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({profile_pic: emoji})
+                });
+
+                if (res.ok) {
+                    const result = await res.json();
+                    currentUser.profile_pic = emoji;
+                    updateSidebarUser();
+                }
+            } catch (err) {
+                console.error('Failed to save profile pic');
+            }
         }
 
         async function saveProfile() {
@@ -1418,7 +1584,8 @@
         async function showContactInfo() {
             if (!activeContact) return;
             
-            document.getElementById('contactInfoPic').textContent = activeContact.display_name[0].toUpperCase();
+            const pic = activeContact.profile_pic || activeContact.display_name[0].toUpperCase();
+            document.getElementById('contactInfoPic').textContent = pic;
             document.getElementById('contactInfoName').textContent = activeContact.display_name;
             document.getElementById('contactInfoId').textContent = `ID: ${activeContact.user_id}`;
             document.getElementById('contactInfoAbout').textContent = activeContact.about || 'Hey there! I am using ChatApp.';
@@ -1459,11 +1626,12 @@
                 const lastMsg = c.last_message;
                 const time = lastMsg ? formatTime(lastMsg.timestamp) : '';
                 const preview = lastMsg ? (lastMsg.is_mine ? 'You: ' : '') + lastMsg.content : 'No messages yet';
+                const pic = c.profile_pic || c.display_name[0].toUpperCase();
                 
                 return `
                     <div class="contact-item ${activeContact?.user_id === c.user_id ? 'active' : ''}" 
                          onclick="openChat('${c.user_id}')">
-                        <div class="contact-avatar">${c.display_name[0].toUpperCase()}</div>
+                        <div class="contact-avatar">${pic}</div>
                         <div class="contact-details">
                             <div class="contact-header">
                                 <span class="contact-name">${escapeHtml(c.display_name)}</span>
@@ -1515,8 +1683,9 @@
             activeContact = contacts.find(c => c.user_id === userId);
             if (!activeContact) return;
 
+            const pic = activeContact.profile_pic || activeContact.display_name[0].toUpperCase();
             document.getElementById('chatName').textContent = activeContact.display_name;
-            document.getElementById('chatAvatar').textContent = activeContact.display_name[0].toUpperCase();
+            document.getElementById('chatAvatar').textContent = pic;
             
             if (window.innerWidth < 768) {
                 document.getElementById('sidebar').classList.add('hidden-mobile');
