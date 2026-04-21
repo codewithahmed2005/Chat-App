@@ -1,17 +1,30 @@
 import eventlet
 eventlet.monkey_patch()
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from models import db, User, Contact, Message
 import os
 from datetime import datetime
 
+# Upload folder config
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'fallback-dev-key-only')
+    app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+    
+    # Create upload folder
+    os.makedirs(os.path.join(app.root_path, UPLOAD_FOLDER), exist_ok=True)
     
     database_url = os.environ.get('DATABASE_URL')
     if database_url:
@@ -37,6 +50,11 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
+    
+    # Serve uploaded files
+    @app.route('/uploads/<filename>')
+    def uploaded_file(filename):
+        return send_from_directory(os.path.join(app.root_path, UPLOAD_FOLDER), filename)
     
     # ==================== AUTH ROUTES ====================
     
@@ -116,6 +134,10 @@ def create_app():
     @app.route('/api/me')
     @login_required
     def get_me():
+        profile_pic_url = None
+        if current_user.profile_pic and current_user.profile_pic != 'default.png':
+            profile_pic_url = f'/uploads/{current_user.profile_pic}'
+        
         return jsonify({
             'id': current_user.id,
             'user_id': current_user.user_id,
@@ -123,7 +145,8 @@ def create_app():
             'display_name': current_user.display_name,
             'email': current_user.email,
             'about': current_user.about or 'Hey there! I am using ChatApp.',
-            'profile_pic': current_user.profile_pic or 'default.png'
+            'profile_pic': profile_pic_url,
+            'profile_pic_filename': current_user.profile_pic or 'default.png'
         })
     
     @app.route('/api/me', methods=['PUT'])
@@ -131,13 +154,11 @@ def create_app():
     def update_profile():
         data = request.get_json()
         
-        # Check username uniqueness if changed
         if data.get('username') and data['username'] != current_user.username:
             if User.query.filter_by(username=data['username']).first():
                 return jsonify({'error': 'Username already taken'}), 400
             current_user.username = data['username']
         
-        # Update fields
         if data.get('display_name'):
             current_user.display_name = data['display_name']
         if data.get('about') is not None:
@@ -147,24 +168,74 @@ def create_app():
         
         db.session.commit()
         
+        profile_pic_url = None
+        if current_user.profile_pic and current_user.profile_pic != 'default.png':
+            profile_pic_url = f'/uploads/{current_user.profile_pic}'
+        
         return jsonify({
             'message': 'Profile updated',
             'user_id': current_user.user_id,
             'username': current_user.username,
             'display_name': current_user.display_name,
-            'about': current_user.about
+            'about': current_user.about,
+            'profile_pic': profile_pic_url
+        })
+    
+    # ==================== NEW: PROFILE PICTURE UPLOAD ====================
+    
+    @app.route('/api/me/profile-pic', methods=['POST'])
+    @login_required
+    def upload_profile_pic():
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file type. Use png, jpg, jpeg, gif, webp'}), 400
+        
+        # Generate unique filename
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        filename = f"user_{current_user.user_id}_{int(datetime.utcnow().timestamp())}.{ext}"
+        filename = secure_filename(filename)
+        
+        # Delete old profile pic if exists
+        if current_user.profile_pic and current_user.profile_pic != 'default.png':
+            old_path = os.path.join(app.root_path, UPLOAD_FOLDER, current_user.profile_pic)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        
+        # Save new file
+        file.save(os.path.join(app.root_path, UPLOAD_FOLDER, filename))
+        
+        # Update database
+        current_user.profile_pic = filename
+        db.session.commit()
+        
+        return jsonify({
+            'message': 'Profile picture updated',
+            'profile_pic': f'/uploads/{filename}',
+            'profile_pic_filename': filename
         })
     
     @app.route('/api/users/<user_id>')
     @login_required
     def get_user_profile(user_id):
         user = User.query.filter_by(user_id=user_id).first_or_404()
+        
+        profile_pic_url = None
+        if user.profile_pic and user.profile_pic != 'default.png':
+            profile_pic_url = f'/uploads/{user.profile_pic}'
+        
         return jsonify({
             'user_id': user.user_id,
             'display_name': user.display_name,
             'username': user.username,
             'about': user.about or 'Hey there! I am using ChatApp.',
-            'profile_pic': user.profile_pic or 'default.png'
+            'profile_pic': profile_pic_url
         })
     
     # ==================== API CONTACTS ====================
@@ -195,11 +266,16 @@ def create_app():
             
             last_msg = get_last_message(current_user.id, target_user.id)
             
+            profile_pic_url = None
+            if target_user.profile_pic and target_user.profile_pic != 'default.png':
+                profile_pic_url = f'/uploads/{target_user.profile_pic}'
+            
             return jsonify({
                 'user_id': target_user.user_id,
                 'display_name': target_user.display_name,
                 'username': target_user.username,
                 'about': target_user.about,
+                'profile_pic': profile_pic_url,
                 'last_message': last_msg
             }), 201
         
@@ -213,11 +289,16 @@ def create_app():
                 is_read=False
             ).count()
             
+            profile_pic_url = None
+            if c.contact_user.profile_pic and c.contact_user.profile_pic != 'default.png':
+                profile_pic_url = f'/uploads/{c.contact_user.profile_pic}'
+            
             result.append({
                 'user_id': c.contact_user.user_id,
                 'display_name': c.contact_user.display_name,
                 'username': c.contact_user.username,
                 'about': c.contact_user.about,
+                'profile_pic': profile_pic_url,
                 'last_message': last_msg,
                 'unread_count': unread_count
             })
