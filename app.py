@@ -7,7 +7,6 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, Contact, Message
 import os
-import re
 from datetime import datetime
 
 def create_app():
@@ -124,7 +123,7 @@ def create_app():
             'display_name': current_user.display_name,
             'email': current_user.email,
             'about': current_user.about or 'Hey there! I am using ChatApp.',
-            'profile_pic': current_user.profile_pic
+            'profile_pic': current_user.profile_pic or 'default.png'
         })
     
     @app.route('/api/me', methods=['PUT'])
@@ -143,12 +142,8 @@ def create_app():
             current_user.display_name = data['display_name']
         if data.get('about') is not None:
             current_user.about = data['about']
-        if data.get('profile_pic') is not None:
-            # Validate base64 image
-            pic = data['profile_pic']
-            if pic and not re.match(r'^data:image\/(jpeg|png|gif|webp);base64,', pic):
-                return jsonify({'error': 'Invalid image format'}), 400
-            current_user.profile_pic = pic
+        if data.get('profile_pic'):
+            current_user.profile_pic = data['profile_pic']
         
         db.session.commit()
         
@@ -157,8 +152,7 @@ def create_app():
             'user_id': current_user.user_id,
             'username': current_user.username,
             'display_name': current_user.display_name,
-            'about': current_user.about,
-            'profile_pic': current_user.profile_pic
+            'about': current_user.about
         })
     
     @app.route('/api/users/<user_id>')
@@ -170,7 +164,7 @@ def create_app():
             'display_name': user.display_name,
             'username': user.username,
             'about': user.about or 'Hey there! I am using ChatApp.',
-            'profile_pic': user.profile_pic
+            'profile_pic': user.profile_pic or 'default.png'
         })
     
     # ==================== API CONTACTS ====================
@@ -206,7 +200,6 @@ def create_app():
                 'display_name': target_user.display_name,
                 'username': target_user.username,
                 'about': target_user.about,
-                'profile_pic': target_user.profile_pic,
                 'last_message': last_msg
             }), 201
         
@@ -225,7 +218,6 @@ def create_app():
                 'display_name': c.contact_user.display_name,
                 'username': c.contact_user.username,
                 'about': c.contact_user.about,
-                'profile_pic': c.contact_user.profile_pic,
                 'last_message': last_msg,
                 'unread_count': unread_count
             })
