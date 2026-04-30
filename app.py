@@ -4,6 +4,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import json
 import os
 import uuid
+import random
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -41,7 +42,8 @@ def init_db():
             "users": {},
             "contacts": {},
             "messages": {},
-            "chats": {}
+            "chats": {},
+            "requests": {}  # Contact requests
         }
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(default_data, f, indent=2, ensure_ascii=False)
@@ -51,22 +53,19 @@ def init_db():
 def load_data():
     if not os.path.exists(DATA_FILE):
         init_db()
-        return {"users": {}, "contacts": {}, "messages": {}, "chats": {}}
+        return {"users": {}, "contacts": {}, "messages": {}, "chats": {}, "requests": {}}
 
     with open(DATA_FILE, 'r', encoding='utf-8') as f:
         try:
             data = json.load(f)
-            # Fix agar list format mein ho
             if isinstance(data, list):
-                return {"users": {}, "contacts": {}, "messages": {}, "chats": {}}
-            # Fix agar keys missing ho
-            for key in ['users', 'contacts', 'messages', 'chats']:
+                return {"users": {}, "contacts": {}, "messages": {}, "chats": {}, "requests": {}}
+            for key in ['users', 'contacts', 'messages', 'chats', 'requests']:
                 if key not in data:
                     data[key] = {}
             return data
         except json.JSONDecodeError:
-            # Corrupted file, reset it
-            return {"users": {}, "contacts": {}, "messages": {}, "chats": {}}
+            return {"users": {}, "contacts": {}, "messages": {}, "chats": {}, "requests": {}}
 
 
 def save_data(data):
@@ -75,7 +74,8 @@ def save_data(data):
 
 
 def generate_id():
-    return 'ID' + str(uuid.uuid4()).upper().replace('-', '')[:10]
+    """Generate numeric user ID (10 digits)"""
+    return str(random.randint(1000000000, 9999999999))
 
 
 def get_chat_id(user1, user2):
@@ -114,6 +114,7 @@ def register():
         "created": datetime.now().isoformat()
     }
     db['contacts'][user_id] = []
+    db['requests'][user_id] = {"sent": [], "received": []}
 
     save_data(db)
     return jsonify({"success": True, "user": db['users'][user_id]}), 201
@@ -142,7 +143,6 @@ def get_user(user_id):
     user = db['users'].get(user_id)
     if not user:
         return jsonify({"error": "User not found"}), 404
-    # Don't send password
     safe_user = {k: v for k, v in user.items() if k != 'password'}
     return jsonify(safe_user), 200
 
@@ -156,7 +156,6 @@ def update_user(user_id):
 
     data = request.get_json()
 
-    # ID can never be changed
     user['name'] = data.get('name', user['name'])
     user['username'] = data.get('username', user['username'])
     user['about'] = data.get('about', user['about'])
@@ -184,6 +183,13 @@ def upload_avatar(user_id):
     if ext not in ALLOWED_IMAGE:
         return jsonify({"success": False, "error": "Invalid image format"}), 400
 
+    # Delete old avatar if exists
+    old_avatar = db['users'][user_id].get('avatar')
+    if old_avatar:
+        old_path = os.path.join(UPLOAD_FOLDER, old_avatar.replace('/uploads/', ''))
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
     filename = f"{user_id}_{uuid.uuid4().hex}.{ext}"
     filepath = os.path.join(UPLOAD_FOLDER, 'images', filename)
     file.save(filepath)
@@ -194,18 +200,49 @@ def upload_avatar(user_id):
     return jsonify({"success": True, "avatar": db['users'][user_id]['avatar']}), 200
 
 
+@app.route('/api/user/<user_id>/avatar', methods=['DELETE'])
+def remove_avatar(user_id):
+    db = load_data()
+    if user_id not in db['users']:
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    # Delete avatar file
+    old_avatar = db['users'][user_id].get('avatar')
+    if old_avatar:
+        old_path = os.path.join(UPLOAD_FOLDER, old_avatar.replace('/uploads/', ''))
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
+    db['users'][user_id]['avatar'] = None
+    save_data(db)
+
+    return jsonify({"success": True}), 200
+
+
 @app.route('/api/user/<user_id>', methods=['DELETE'])
 def delete_account(user_id):
     db = load_data()
     if user_id not in db['users']:
         return jsonify({"error": "User not found"}), 404
 
-    # Delete user
+    # Delete avatar file if exists
+    old_avatar = db['users'][user_id].get('avatar')
+    if old_avatar:
+        old_path = os.path.join(UPLOAD_FOLDER, old_avatar.replace('/uploads/', ''))
+        if os.path.exists(old_path):
+            os.remove(old_path)
+
     del db['users'][user_id]
     if user_id in db['contacts']:
         del db['contacts'][user_id]
+    if user_id in db['requests']:
+        # Remove from other users' request lists
+        for uid, reqs in db['requests'].items():
+            if uid != user_id:
+                reqs['sent'] = [r for r in reqs['sent'] if r.get('to') != user_id]
+                reqs['received'] = [r for r in reqs['received'] if r.get('from') != user_id]
+        del db['requests'][user_id]
 
-    # Delete all related chats and messages
     chats_to_delete = [c for c in db['chats'] if user_id in c.split('_')]
     for chat_id in chats_to_delete:
         del db['chats'][chat_id]
@@ -213,6 +250,200 @@ def delete_account(user_id):
             del db['messages'][chat_id]
 
     save_data(db)
+    return jsonify({"success": True}), 200
+
+
+# ==================== CONTACT REQUEST ROUTES ====================
+
+@app.route('/api/requests/<user_id>', methods=['GET'])
+def get_requests(user_id):
+    db = load_data()
+    if user_id not in db['users']:
+        return jsonify({"error": "User not found"}), 404
+
+    if user_id not in db['requests']:
+        db['requests'][user_id] = {"sent": [], "received": []}
+        save_data(db)
+
+    requests = db['requests'][user_id]
+    # Enrich with user details
+    enriched_received = []
+    for req in requests.get('received', []):
+        user = db['users'].get(req['from'])
+        if user:
+            enriched_received.append({
+                **req,
+                "user": {k: v for k, v in user.items() if k != 'password'}
+            })
+
+    enriched_sent = []
+    for req in requests.get('sent', []):
+        user = db['users'].get(req['to'])
+        if user:
+            enriched_sent.append({
+                **req,
+                "user": {k: v for k, v in user.items() if k != 'password'}
+            })
+
+    return jsonify({
+        "received": enriched_received,
+        "sent": enriched_sent
+    }), 200
+
+
+@app.route('/api/requests/<user_id>', methods=['POST'])
+def send_request(user_id):
+    data = request.get_json()
+    to_id = data.get('to_id', '').strip()
+
+    db = load_data()
+
+    if to_id not in db['users']:
+        return jsonify({"success": False, "error": "User not found"}), 404
+    if to_id == user_id:
+        return jsonify({"success": False, "error": "Cannot send request to yourself"}), 400
+
+    # Check if already contacts
+    if user_id in db['contacts'].get(to_id, []) or to_id in db['contacts'].get(user_id, []):
+        return jsonify({"success": False, "error": "Already in contacts"}), 400
+
+    # Check if request already pending
+    received = db['requests'].get(to_id, {}).get('received', [])
+    for req in received:
+        if req['from'] == user_id and req['status'] == 'pending':
+            return jsonify({"success": False, "error": "Request already sent"}), 400
+
+    request_id = f"req_{uuid.uuid4().hex}"
+    request_data = {
+        "id": request_id,
+        "from": user_id,
+        "to": to_id,
+        "status": "pending",
+        "timestamp": datetime.now().isoformat()
+    }
+
+    # Add to sender's sent
+    if user_id not in db['requests']:
+        db['requests'][user_id] = {"sent": [], "received": []}
+    db['requests'][user_id]['sent'].append(request_data)
+
+    # Add to receiver's received
+    if to_id not in db['requests']:
+        db['requests'][to_id] = {"sent": [], "received": []}
+    db['requests'][to_id]['received'].append(request_data)
+
+    save_data(db)
+
+    # Emit notification to receiver
+    sender = db['users'][user_id]
+    socketio.emit('new_request', {
+        "request": request_data,
+        "from_user": {k: v for k, v in sender.items() if k != 'password'}
+    }, room=f"user_{to_id}")
+
+    return jsonify({"success": True, "request": request_data}), 201
+
+
+@app.route('/api/requests/<user_id>/<request_id>/accept', methods=['POST'])
+def accept_request(user_id, request_id):
+    db = load_data()
+
+    # Find request in received
+    requests = db['requests'].get(user_id, {}).get('received', [])
+    request_obj = None
+    for req in requests:
+        if req['id'] == request_id and req['status'] == 'pending':
+            request_obj = req
+            break
+
+    if not request_obj:
+        return jsonify({"success": False, "error": "Request not found"}), 404
+
+    from_id = request_obj['from']
+
+    # Update request status
+    request_obj['status'] = 'accepted'
+    request_obj['accepted_at'] = datetime.now().isoformat()
+
+    # Update in sender's sent list too
+    sent_requests = db['requests'].get(from_id, {}).get('sent', [])
+    for req in sent_requests:
+        if req['id'] == request_id:
+            req['status'] = 'accepted'
+            req['accepted_at'] = datetime.now().isoformat()
+            break
+
+    # Add to contacts (both sides)
+    if user_id not in db['contacts']:
+        db['contacts'][user_id] = []
+    if from_id not in db['contacts']:
+        db['contacts'][from_id] = []
+
+    if from_id not in db['contacts'][user_id]:
+        db['contacts'][user_id].append(from_id)
+    if user_id not in db['contacts'][from_id]:
+        db['contacts'][from_id].append(user_id)
+
+    # Create chat
+    chat_id = get_chat_id(user_id, from_id)
+    if chat_id not in db['chats']:
+        db['chats'][chat_id] = {
+            "participants": [user_id, from_id],
+            "lastMessage": None,
+            "unread": 0
+        }
+
+    save_data(db)
+
+    # Notify both users
+    socketio.emit('request_accepted', {
+        "request_id": request_id,
+        "contact_id": from_id
+    }, room=f"user_{user_id}")
+
+    socketio.emit('request_accepted', {
+        "request_id": request_id,
+        "contact_id": user_id
+    }, room=f"user_{from_id}")
+
+    return jsonify({"success": True}), 200
+
+
+@app.route('/api/requests/<user_id>/<request_id>/reject', methods=['POST'])
+def reject_request(user_id, request_id):
+    db = load_data()
+
+    # Find request in received
+    requests = db['requests'].get(user_id, {}).get('received', [])
+    request_obj = None
+    for req in requests:
+        if req['id'] == request_id and req['status'] == 'pending':
+            request_obj = req
+            break
+
+    if not request_obj:
+        return jsonify({"success": False, "error": "Request not found"}), 404
+
+    from_id = request_obj['from']
+
+    # Update request status
+    request_obj['status'] = 'rejected'
+    request_obj['rejected_at'] = datetime.now().isoformat()
+
+    # Update in sender's sent list
+    sent_requests = db['requests'].get(from_id, {}).get('sent', [])
+    for req in sent_requests:
+        if req['id'] == request_id:
+            req['status'] = 'rejected'
+            req['rejected_at'] = datetime.now().isoformat()
+            break
+
+    save_data(db)
+
+    socketio.emit('request_rejected', {
+        "request_id": request_id
+    }, room=f"user_{from_id}")
+
     return jsonify({"success": True}), 200
 
 
@@ -229,39 +460,6 @@ def get_contacts(user_id):
             safe = {k: v for k, v in user.items() if k != 'password'}
             contact_list.append(safe)
     return jsonify(contact_list), 200
-
-
-@app.route('/api/contacts/<user_id>', methods=['POST'])
-def add_contact(user_id):
-    data = request.get_json()
-    contact_id = data.get('contact_id', '').strip()
-
-    db = load_data()
-
-    if contact_id not in db['users']:
-        return jsonify({"error": "User not found"}), 404
-    if contact_id == user_id:
-        return jsonify({"error": "Cannot add yourself"}), 400
-
-    if user_id not in db['contacts']:
-        db['contacts'][user_id] = []
-
-    if contact_id in db['contacts'][user_id]:
-        return jsonify({"error": "Already in contacts"}), 400
-
-    db['contacts'][user_id].append(contact_id)
-
-    # Auto-create chat
-    chat_id = get_chat_id(user_id, contact_id)
-    if chat_id not in db['chats']:
-        db['chats'][chat_id] = {
-            "participants": [user_id, contact_id],
-            "lastMessage": None,
-            "unread": 0
-        }
-
-    save_data(db)
-    return jsonify({"success": True}), 200
 
 
 # ==================== MESSAGE ROUTES ====================
@@ -294,7 +492,6 @@ def send_message(chat_id):
         db['messages'][chat_id] = []
     db['messages'][chat_id].append(msg)
 
-    # Update chat
     participants = chat_id.split('_')
     other = [p for p in participants if p != data['sender']][0]
 
@@ -306,8 +503,9 @@ def send_message(chat_id):
 
     save_data(db)
 
-    # Emit real-time
-    socketio.emit('new_message', {"chat_id": chat_id, "message": msg}, room=chat_id)
+    # Emit real-time to both users' rooms
+    socketio.emit('new_message', {"chat_id": chat_id, "message": msg}, room=f"user_{other}")
+    socketio.emit('new_message', {"chat_id": chat_id, "message": msg}, room=f"user_{data['sender']}")
 
     return jsonify({"success": True, "message": msg}), 201
 
@@ -325,7 +523,9 @@ def edit_message(chat_id, msg_id):
             msg['editTimestamp'] = datetime.now().isoformat()
             save_data(db)
 
-            socketio.emit('message_edited', {"chat_id": chat_id, "message": msg}, room=chat_id)
+            participants = chat_id.split('_')
+            for p in participants:
+                socketio.emit('message_edited', {"chat_id": chat_id, "message": msg}, room=f"user_{p}")
             return jsonify({"success": True}), 200
 
     return jsonify({"error": "Message not found"}), 404
@@ -340,7 +540,10 @@ def delete_message(chat_id, msg_id):
     db['messages'][chat_id] = [m for m in messages if not (m['id'] == msg_id and m['sender'] == data['sender'])]
 
     save_data(db)
-    socketio.emit('message_deleted', {"chat_id": chat_id, "msg_id": msg_id}, room=chat_id)
+
+    participants = chat_id.split('_')
+    for p in participants:
+        socketio.emit('message_deleted', {"chat_id": chat_id, "msg_id": msg_id}, room=f"user_{p}")
 
     return jsonify({"success": True}), 200
 
@@ -398,13 +601,32 @@ def serve_upload(filename):
 
 # ==================== SOCKET.IO ====================
 
-@socketio.on('join')
-def on_join(data):
+@socketio.on('connect')
+def on_connect():
+    print('Client connected')
+
+@socketio.on('disconnect')
+def on_disconnect():
+    print('Client disconnected')
+
+@socketio.on('join_user')
+def on_join_user(data):
+    room = f"user_{data['user_id']}"
+    join_room(room)
+    print(f'User {data["user_id"]} joined room {room}')
+
+@socketio.on('leave_user')
+def on_leave_user(data):
+    room = f"user_{data['user_id']}"
+    leave_room(room)
+
+@socketio.on('join_chat')
+def on_join_chat(data):
     room = data['chat_id']
     join_room(room)
 
-@socketio.on('leave')
-def on_leave(data):
+@socketio.on('leave_chat')
+def on_leave_chat(data):
     room = data['chat_id']
     leave_room(room)
 
@@ -415,7 +637,6 @@ def on_typing(data):
 
 # ==================== RUN ====================
 
-# Initialize DB on module load (for Gunicorn)
 init_db()
 
 if __name__ == '__main__':
