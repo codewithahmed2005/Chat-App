@@ -8,7 +8,8 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-# CORS properly configure karo
+
+# CORS properly configured
 CORS(app, resources={
     r"/api/*": {
         "origins": "*",
@@ -33,9 +34,25 @@ os.makedirs(f"{UPLOAD_FOLDER}/audio", exist_ok=True)
 
 # ==================== DATABASE HELPERS ====================
 
+def init_db():
+    """Initialize database file if it doesn't exist"""
+    if not os.path.exists(DATA_FILE):
+        default_data = {
+            "users": {},
+            "contacts": {},
+            "messages": {},
+            "chats": {}
+        }
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(default_data, f, indent=2, ensure_ascii=False)
+        print("[INIT] Created new userchat.json database")
+
+
 def load_data():
     if not os.path.exists(DATA_FILE):
+        init_db()
         return {"users": {}, "contacts": {}, "messages": {}, "chats": {}}
+
     with open(DATA_FILE, 'r', encoding='utf-8') as f:
         try:
             data = json.load(f)
@@ -45,9 +62,10 @@ def load_data():
             # Fix agar keys missing ho
             for key in ['users', 'contacts', 'messages', 'chats']:
                 if key not in data:
-                    data[key] = {} if key != 'contacts' else {}
+                    data[key] = {}
             return data
-        except:
+        except json.JSONDecodeError:
+            # Corrupted file, reset it
             return {"users": {}, "contacts": {}, "messages": {}, "chats": {}}
 
 
@@ -78,7 +96,7 @@ def register():
         return jsonify({"success": False, "error": "Invalid input"}), 400
 
     db = load_data()
-    
+
     # Check username unique
     for u in db['users'].values():
         if u['username'] == username:
@@ -96,7 +114,7 @@ def register():
         "created": datetime.now().isoformat()
     }
     db['contacts'][user_id] = []
-    
+
     save_data(db)
     return jsonify({"success": True, "user": db['users'][user_id]}), 201
 
@@ -137,15 +155,16 @@ def update_user(user_id):
         return jsonify({"error": "User not found"}), 404
 
     data = request.get_json()
-    
+
     # ID can never be changed
     user['name'] = data.get('name', user['name'])
     user['username'] = data.get('username', user['username'])
     user['about'] = data.get('about', user['about'])
     user['theme'] = data.get('theme', user['theme'])
-    
+
     save_data(db)
     return jsonify({"success": True, "user": user}), 200
+
 
 @app.route('/api/user/<user_id>/avatar', methods=['POST'])
 def upload_avatar(user_id):
@@ -157,8 +176,11 @@ def upload_avatar(user_id):
         return jsonify({"success": False, "error": "No file"}), 400
 
     file = request.files['file']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
     ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-    
+
     if ext not in ALLOWED_IMAGE:
         return jsonify({"success": False, "error": "Invalid image format"}), 400
 
@@ -168,7 +190,7 @@ def upload_avatar(user_id):
 
     db['users'][user_id]['avatar'] = f"/uploads/images/{filename}"
     save_data(db)
-    
+
     return jsonify({"success": True, "avatar": db['users'][user_id]['avatar']}), 200
 
 
@@ -180,7 +202,8 @@ def delete_account(user_id):
 
     # Delete user
     del db['users'][user_id]
-    del db['contacts'][user_id]
+    if user_id in db['contacts']:
+        del db['contacts'][user_id]
 
     # Delete all related chats and messages
     chats_to_delete = [c for c in db['chats'] if user_id in c.split('_')]
@@ -214,7 +237,7 @@ def add_contact(user_id):
     contact_id = data.get('contact_id', '').strip()
 
     db = load_data()
-    
+
     if contact_id not in db['users']:
         return jsonify({"error": "User not found"}), 404
     if contact_id == user_id:
@@ -222,13 +245,12 @@ def add_contact(user_id):
 
     if user_id not in db['contacts']:
         db['contacts'][user_id] = []
-    
+
     if contact_id in db['contacts'][user_id]:
         return jsonify({"error": "Already in contacts"}), 400
 
     db['contacts'][user_id].append(contact_id)
-    save_data(db)
-    
+
     # Auto-create chat
     chat_id = get_chat_id(user_id, contact_id)
     if chat_id not in db['chats']:
@@ -237,8 +259,8 @@ def add_contact(user_id):
             "lastMessage": None,
             "unread": 0
         }
-        save_data(db)
 
+    save_data(db)
     return jsonify({"success": True}), 200
 
 
@@ -275,13 +297,13 @@ def send_message(chat_id):
     # Update chat
     participants = chat_id.split('_')
     other = [p for p in participants if p != data['sender']][0]
-    
+
     db['chats'][chat_id] = {
         "participants": participants,
         "lastMessage": msg,
         "unread": db['chats'].get(chat_id, {}).get('unread', 0) + 1
     }
-    
+
     save_data(db)
 
     # Emit real-time
@@ -302,7 +324,7 @@ def edit_message(chat_id, msg_id):
             msg['edited'] = True
             msg['editTimestamp'] = datetime.now().isoformat()
             save_data(db)
-            
+
             socketio.emit('message_edited', {"chat_id": chat_id, "message": msg}, room=chat_id)
             return jsonify({"success": True}), 200
 
@@ -316,10 +338,10 @@ def delete_message(chat_id, msg_id):
 
     messages = db['messages'].get(chat_id, [])
     db['messages'][chat_id] = [m for m in messages if not (m['id'] == msg_id and m['sender'] == data['sender'])]
-    
+
     save_data(db)
     socketio.emit('message_deleted', {"chat_id": chat_id, "msg_id": msg_id}, room=chat_id)
-    
+
     return jsonify({"success": True}), 200
 
 
@@ -346,17 +368,20 @@ def mark_read(chat_id):
 @app.route('/api/upload/<media_type>', methods=['POST'])
 def upload_media(media_type):
     if media_type not in ['image', 'video', 'audio']:
-        return jsonify({"error": "Invalid type"}), 400
+        return jsonify({"success": False, "error": "Invalid type"}), 400
 
     if 'file' not in request.files:
-        return jsonify({"error": "No file"}), 400
+        return jsonify({"success": False, "error": "No file"}), 400
 
     file = request.files['file']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
     ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
 
     allowed = ALLOWED_IMAGE if media_type == 'image' else ALLOWED_VIDEO if media_type == 'video' else ALLOWED_AUDIO
     if ext not in allowed:
-        return jsonify({"error": "Invalid format"}), 400
+        return jsonify({"success": False, "error": "Invalid format"}), 400
 
     filename = f"{uuid.uuid4().hex}.{ext}"
     folder = f"{UPLOAD_FOLDER}/{media_type}s"
@@ -390,7 +415,9 @@ def on_typing(data):
 
 # ==================== RUN ====================
 
-init_db()  # Initialize DB on module load (for Gunicorn)
+# Initialize DB on module load (for Gunicorn)
+init_db()
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=True)
