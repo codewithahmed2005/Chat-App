@@ -772,5 +772,15 @@ def socket_send_message(data):
 
 if __name__ == "__main__":
     init_db()
-    print("Backend running on http://127.0.0.1:5000")
-    socketio.run(app, host="127.0.0.1", port=5000, debug=True)
+
+    port = int(os.environ.get("PORT", 5000))
+
+    print(f"Backend running on port {port}")
+
+    socketio.run(
+        app,
+        host="0.0.0.0",
+        port=port,
+        debug=False,
+        allow_unsafe_werkzeug=True
+    )
