@@ -129,7 +129,6 @@ def generate_chat_id(db):
         if not exists:
             return chat_id
 
-
 def generate_msg_id():
     return "MSG" + uuid.uuid4().hex[:12].upper()
 
@@ -405,6 +404,8 @@ def add_contact():
     if not contact_id:
         return jsonify({"error": "Contact ID is required"}), 400
 
+    if not contact_id.isdigit():
+        return jsonify({"error": "User ID must contain numbers only"}), 400
     with DB_LOCK:
         db = read_db()
 
@@ -772,15 +773,5 @@ def socket_send_message(data):
 
 if __name__ == "__main__":
     init_db()
-
-    port = int(os.environ.get("PORT", 5000))
-
-    print(f"Backend running on port {port}")
-
-    socketio.run(
-        app,
-        host="0.0.0.0",
-        port=port,
-        debug=False,
-        allow_unsafe_werkzeug=True
-    )
+    print("Backend running on http://127.0.0.1:5000")
+    socketio.run(app, host="127.0.0.1", port=5000, debug=True)
