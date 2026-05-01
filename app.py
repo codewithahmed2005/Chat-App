@@ -1,644 +1,776 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit, join_room, leave_room
-import json
-import os
-import uuid
-import random
-from datetime import datetime
+from flask_socketio import SocketIO, emit, join_room
+from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 
+import os
+import json
+import uuid
+import secrets
+import threading
+from datetime import datetime
+
 app = Flask(__name__)
+app.config["SECRET_KEY"] = "change-this-secret-key"
 
-# CORS properly configured
-CORS(app, resources={
-    r"/api/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
+CORS(app, supports_credentials=True)
+
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode="threading"
+)
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR, "userchat.json")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+
+UPLOAD_FOLDERS = {
+    "images": os.path.join(UPLOAD_DIR, "images"),
+    "videos": os.path.join(UPLOAD_DIR, "videos"),
+    "voice": os.path.join(UPLOAD_DIR, "voice"),
+    "profiles": os.path.join(UPLOAD_DIR, "profiles")
+}
+
+DB_LOCK = threading.Lock()
+SID_USERS = {}
+
+for folder in UPLOAD_FOLDERS.values():
+    os.makedirs(folder, exist_ok=True)
+
+
+def now():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def default_db():
+    return {
+        "users": [],
+        "contacts": [],
+        "messages": [],
+        "settings": []
     }
-})
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-
-# Config
-DATA_FILE = 'userchat.json'
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_IMAGE = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-ALLOWED_VIDEO = {'mp4', 'webm', 'mov'}
-ALLOWED_AUDIO = {'webm', 'mp3', 'wav'}
-
-os.makedirs(f"{UPLOAD_FOLDER}/images", exist_ok=True)
-os.makedirs(f"{UPLOAD_FOLDER}/videos", exist_ok=True)
-os.makedirs(f"{UPLOAD_FOLDER}/audio", exist_ok=True)
-
-
-# ==================== DATABASE HELPERS ====================
 
 def init_db():
-    """Initialize database file if it doesn't exist"""
-    if not os.path.exists(DATA_FILE):
-        default_data = {
-            "users": {},
-            "contacts": {},
-            "messages": {},
-            "chats": {},
-            "requests": {}  # Contact requests
-        }
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(default_data, f, indent=2, ensure_ascii=False)
-        print("[INIT] Created new userchat.json database")
+    if not os.path.exists(DB_FILE):
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(default_db(), f, indent=4)
 
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        init_db()
-        return {"users": {}, "contacts": {}, "messages": {}, "chats": {}, "requests": {}}
-
-    with open(DATA_FILE, 'r', encoding='utf-8') as f:
-        try:
-            data = json.load(f)
-            if isinstance(data, list):
-                return {"users": {}, "contacts": {}, "messages": {}, "chats": {}, "requests": {}}
-            for key in ['users', 'contacts', 'messages', 'chats', 'requests']:
-                if key not in data:
-                    data[key] = {}
-            return data
-        except json.JSONDecodeError:
-            return {"users": {}, "contacts": {}, "messages": {}, "chats": {}, "requests": {}}
+def read_db():
+    init_db()
+    with open(DB_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def save_data(data):
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+def write_db(db):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=4)
 
 
-def generate_id():
-    """Generate numeric user ID (10 digits)"""
-    return str(random.randint(1000000000, 9999999999))
+def public_user(user):
+    if not user:
+        return None
+
+    return {
+        "chat_id": user["chat_id"],
+        "name": user["name"],
+        "username": user["username"],
+        "about": user.get("about", ""),
+        "profile_image": user.get("profile_image"),
+        "created_at": user.get("created_at")
+    }
 
 
-def get_chat_id(user1, user2):
-    return '_'.join(sorted([user1, user2]))
+def get_auth_token():
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth.replace("Bearer ", "").strip()
+    return None
 
 
-# ==================== AUTH ROUTES ====================
+def find_user_by_token(db, token):
+    if not token:
+        return None
 
-@app.route('/api/register', methods=['POST'])
+    for user in db["users"]:
+        if user.get("token") == token:
+            return user
+
+    return None
+
+
+def current_user():
+    token = get_auth_token()
+
+    db = read_db()
+    user = find_user_by_token(db, token)
+
+    return db, user
+
+
+def require_auth():
+    db, user = current_user()
+
+    if not user:
+        return db, None, jsonify({"error": "Unauthorized"}), 401
+
+    return db, user, None, None
+
+
+def generate_chat_id(db):
+    while True:
+        chat_id = "ID" + str(secrets.randbelow(90000000) + 10000000)
+
+        exists = any(u["chat_id"] == chat_id for u in db["users"])
+
+        if not exists:
+            return chat_id
+
+
+def generate_msg_id():
+    return "MSG" + uuid.uuid4().hex[:12].upper()
+
+
+def find_user_by_chat_id(db, chat_id):
+    for user in db["users"]:
+        if user["chat_id"] == chat_id:
+            return user
+    return None
+
+
+def conversation_messages(db, user1, user2):
+    result = []
+
+    for msg in db["messages"]:
+        if user1 in msg.get("deleted_for", []):
+            continue
+
+        condition1 = msg["sender_id"] == user1 and msg["receiver_id"] == user2
+        condition2 = msg["sender_id"] == user2 and msg["receiver_id"] == user1
+
+        if condition1 or condition2:
+            result.append(msg)
+
+    result.sort(key=lambda x: x["created_at"])
+    return result
+
+
+def create_message(db, sender_id, receiver_id, msg_type="text", text="", file_url=None, reply_to=None):
+    msg = {
+        "id": generate_msg_id(),
+        "sender_id": sender_id,
+        "receiver_id": receiver_id,
+        "type": msg_type,
+        "text": text or "",
+        "file_url": file_url,
+        "reply_to": reply_to,
+        "edited": False,
+        "deleted": False,
+        "deleted_for": [],
+        "created_at": now(),
+        "updated_at": None
+    }
+
+    db["messages"].append(msg)
+    return msg
+
+
+@app.route("/")
+def home():
+    return jsonify({"message": "Backend is running"})
+
+
+@app.route("/uploads/<path:filename>")
+def uploaded_file(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
+
+
+@app.route("/api/register", methods=["POST"])
 def register():
     data = request.get_json()
-    name = data.get('name', '').strip()
-    username = data.get('username', '').strip()
-    about = data.get('about', 'Hey there! I am using ChatApp').strip()
-    password = data.get('password', '')
 
-    if not name or not username or not password or len(password) < 6:
-        return jsonify({"success": False, "error": "Invalid input"}), 400
-
-    db = load_data()
-
-    # Check username unique
-    for u in db['users'].values():
-        if u['username'] == username:
-            return jsonify({"success": False, "error": "Username already taken"}), 400
-
-    user_id = generate_id()
-    db['users'][user_id] = {
-        "id": user_id,
-        "name": name,
-        "username": username,
-        "about": about,
-        "password": password,
-        "avatar": None,
-        "theme": "light",
-        "created": datetime.now().isoformat()
-    }
-    db['contacts'][user_id] = []
-    db['requests'][user_id] = {"sent": [], "received": []}
-
-    save_data(db)
-    return jsonify({"success": True, "user": db['users'][user_id]}), 201
-
-
-@app.route('/api/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    user_id = data.get('id', '').strip()
-    password = data.get('password', '')
-
-    db = load_data()
-    user = db['users'].get(user_id)
-
-    if not user or user['password'] != password:
-        return jsonify({"success": False, "error": "Invalid ID or password"}), 401
-
-    return jsonify({"success": True, "user": user}), 200
-
-
-# ==================== USER ROUTES ====================
-
-@app.route('/api/user/<user_id>', methods=['GET'])
-def get_user(user_id):
-    db = load_data()
-    user = db['users'].get(user_id)
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-    safe_user = {k: v for k, v in user.items() if k != 'password'}
-    return jsonify(safe_user), 200
-
-
-@app.route('/api/user/<user_id>', methods=['PUT'])
-def update_user(user_id):
-    db = load_data()
-    user = db['users'].get(user_id)
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    data = request.get_json()
-
-    user['name'] = data.get('name', user['name'])
-    user['username'] = data.get('username', user['username'])
-    user['about'] = data.get('about', user['about'])
-    user['theme'] = data.get('theme', user['theme'])
-
-    save_data(db)
-    return jsonify({"success": True, "user": user}), 200
-
-
-@app.route('/api/user/<user_id>/avatar', methods=['POST'])
-def upload_avatar(user_id):
-    db = load_data()
-    if user_id not in db['users']:
-        return jsonify({"success": False, "error": "User not found"}), 404
-
-    if 'file' not in request.files:
-        return jsonify({"success": False, "error": "No file"}), 400
-
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"success": False, "error": "No file selected"}), 400
-
-    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-
-    if ext not in ALLOWED_IMAGE:
-        return jsonify({"success": False, "error": "Invalid image format"}), 400
-
-    # Delete old avatar if exists
-    old_avatar = db['users'][user_id].get('avatar')
-    if old_avatar:
-        old_path = os.path.join(UPLOAD_FOLDER, old_avatar.replace('/uploads/', ''))
-        if os.path.exists(old_path):
-            os.remove(old_path)
-
-    filename = f"{user_id}_{uuid.uuid4().hex}.{ext}"
-    filepath = os.path.join(UPLOAD_FOLDER, 'images', filename)
-    file.save(filepath)
-
-    db['users'][user_id]['avatar'] = f"/uploads/images/{filename}"
-    save_data(db)
-
-    return jsonify({"success": True, "avatar": db['users'][user_id]['avatar']}), 200
-
-
-@app.route('/api/user/<user_id>/avatar', methods=['DELETE'])
-def remove_avatar(user_id):
-    db = load_data()
-    if user_id not in db['users']:
-        return jsonify({"success": False, "error": "User not found"}), 404
-
-    # Delete avatar file
-    old_avatar = db['users'][user_id].get('avatar')
-    if old_avatar:
-        old_path = os.path.join(UPLOAD_FOLDER, old_avatar.replace('/uploads/', ''))
-        if os.path.exists(old_path):
-            os.remove(old_path)
-
-    db['users'][user_id]['avatar'] = None
-    save_data(db)
-
-    return jsonify({"success": True}), 200
-
-
-@app.route('/api/user/<user_id>', methods=['DELETE'])
-def delete_account(user_id):
-    db = load_data()
-    if user_id not in db['users']:
-        return jsonify({"error": "User not found"}), 404
-
-    # Delete avatar file if exists
-    old_avatar = db['users'][user_id].get('avatar')
-    if old_avatar:
-        old_path = os.path.join(UPLOAD_FOLDER, old_avatar.replace('/uploads/', ''))
-        if os.path.exists(old_path):
-            os.remove(old_path)
-
-    del db['users'][user_id]
-    if user_id in db['contacts']:
-        del db['contacts'][user_id]
-    if user_id in db['requests']:
-        # Remove from other users' request lists
-        for uid, reqs in db['requests'].items():
-            if uid != user_id:
-                reqs['sent'] = [r for r in reqs['sent'] if r.get('to') != user_id]
-                reqs['received'] = [r for r in reqs['received'] if r.get('from') != user_id]
-        del db['requests'][user_id]
-
-    chats_to_delete = [c for c in db['chats'] if user_id in c.split('_')]
-    for chat_id in chats_to_delete:
-        del db['chats'][chat_id]
-        if chat_id in db['messages']:
-            del db['messages'][chat_id]
-
-    save_data(db)
-    return jsonify({"success": True}), 200
-
-
-# ==================== CONTACT REQUEST ROUTES ====================
-
-@app.route('/api/requests/<user_id>', methods=['GET'])
-def get_requests(user_id):
-    db = load_data()
-    if user_id not in db['users']:
-        return jsonify({"error": "User not found"}), 404
-
-    if user_id not in db['requests']:
-        db['requests'][user_id] = {"sent": [], "received": []}
-        save_data(db)
-
-    requests = db['requests'][user_id]
-    # Enrich with user details
-    enriched_received = []
-    for req in requests.get('received', []):
-        user = db['users'].get(req['from'])
-        if user:
-            enriched_received.append({
-                **req,
-                "user": {k: v for k, v in user.items() if k != 'password'}
-            })
-
-    enriched_sent = []
-    for req in requests.get('sent', []):
-        user = db['users'].get(req['to'])
-        if user:
-            enriched_sent.append({
-                **req,
-                "user": {k: v for k, v in user.items() if k != 'password'}
-            })
-
-    return jsonify({
-        "received": enriched_received,
-        "sent": enriched_sent
-    }), 200
-
-
-@app.route('/api/requests/<user_id>', methods=['POST'])
-def send_request(user_id):
-    data = request.get_json()
-    to_id = data.get('to_id', '').strip()
-
-    db = load_data()
-
-    if to_id not in db['users']:
-        return jsonify({"success": False, "error": "User not found"}), 404
-    if to_id == user_id:
-        return jsonify({"success": False, "error": "Cannot send request to yourself"}), 400
-
-    # Check if already contacts
-    if user_id in db['contacts'].get(to_id, []) or to_id in db['contacts'].get(user_id, []):
-        return jsonify({"success": False, "error": "Already in contacts"}), 400
-
-    # Check if request already pending
-    received = db['requests'].get(to_id, {}).get('received', [])
-    for req in received:
-        if req['from'] == user_id and req['status'] == 'pending':
-            return jsonify({"success": False, "error": "Request already sent"}), 400
-
-    request_id = f"req_{uuid.uuid4().hex}"
-    request_data = {
-        "id": request_id,
-        "from": user_id,
-        "to": to_id,
-        "status": "pending",
-        "timestamp": datetime.now().isoformat()
-    }
-
-    # Add to sender's sent
-    if user_id not in db['requests']:
-        db['requests'][user_id] = {"sent": [], "received": []}
-    db['requests'][user_id]['sent'].append(request_data)
-
-    # Add to receiver's received
-    if to_id not in db['requests']:
-        db['requests'][to_id] = {"sent": [], "received": []}
-    db['requests'][to_id]['received'].append(request_data)
-
-    save_data(db)
-
-    # Emit notification to receiver
-    sender = db['users'][user_id]
-    socketio.emit('new_request', {
-        "request": request_data,
-        "from_user": {k: v for k, v in sender.items() if k != 'password'}
-    }, room=f"user_{to_id}")
-
-    return jsonify({"success": True, "request": request_data}), 201
-
-
-@app.route('/api/requests/<user_id>/<request_id>/accept', methods=['POST'])
-def accept_request(user_id, request_id):
-    db = load_data()
-
-    # Find request in received
-    requests = db['requests'].get(user_id, {}).get('received', [])
-    request_obj = None
-    for req in requests:
-        if req['id'] == request_id and req['status'] == 'pending':
-            request_obj = req
-            break
-
-    if not request_obj:
-        return jsonify({"success": False, "error": "Request not found"}), 404
-
-    from_id = request_obj['from']
-
-    # Update request status
-    request_obj['status'] = 'accepted'
-    request_obj['accepted_at'] = datetime.now().isoformat()
-
-    # Update in sender's sent list too
-    sent_requests = db['requests'].get(from_id, {}).get('sent', [])
-    for req in sent_requests:
-        if req['id'] == request_id:
-            req['status'] = 'accepted'
-            req['accepted_at'] = datetime.now().isoformat()
-            break
-
-    # Add to contacts (both sides)
-    if user_id not in db['contacts']:
-        db['contacts'][user_id] = []
-    if from_id not in db['contacts']:
-        db['contacts'][from_id] = []
-
-    if from_id not in db['contacts'][user_id]:
-        db['contacts'][user_id].append(from_id)
-    if user_id not in db['contacts'][from_id]:
-        db['contacts'][from_id].append(user_id)
-
-    # Create chat
-    chat_id = get_chat_id(user_id, from_id)
-    if chat_id not in db['chats']:
-        db['chats'][chat_id] = {
-            "participants": [user_id, from_id],
-            "lastMessage": None,
-            "unread": 0
+    name = data.get("name", "").strip()
+    username = data.get("username", "").strip().lower()
+    password = data.get("password", "")
+
+    if not name or not username or not password:
+        return jsonify({"error": "Name, username and password are required"}), 400
+
+    with DB_LOCK:
+        db = read_db()
+
+        if any(u["username"] == username for u in db["users"]):
+            return jsonify({"error": "Username already exists"}), 400
+
+        chat_id = generate_chat_id(db)
+        token = secrets.token_urlsafe(32)
+
+        user = {
+            "chat_id": chat_id,
+            "name": name,
+            "username": username,
+            "password_hash": generate_password_hash(password),
+            "about": "Hey there! I am using IDChat.",
+            "profile_image": None,
+            "token": token,
+            "created_at": now()
         }
 
-    save_data(db)
+        db["users"].append(user)
 
-    # Notify both users
-    socketio.emit('request_accepted', {
-        "request_id": request_id,
-        "contact_id": from_id
-    }, room=f"user_{user_id}")
+        db["settings"].append({
+            "chat_id": chat_id,
+            "theme": "light"
+        })
 
-    socketio.emit('request_accepted', {
-        "request_id": request_id,
-        "contact_id": user_id
-    }, room=f"user_{from_id}")
+        write_db(db)
 
-    return jsonify({"success": True}), 200
-
-
-@app.route('/api/requests/<user_id>/<request_id>/reject', methods=['POST'])
-def reject_request(user_id, request_id):
-    db = load_data()
-
-    # Find request in received
-    requests = db['requests'].get(user_id, {}).get('received', [])
-    request_obj = None
-    for req in requests:
-        if req['id'] == request_id and req['status'] == 'pending':
-            request_obj = req
-            break
-
-    if not request_obj:
-        return jsonify({"success": False, "error": "Request not found"}), 404
-
-    from_id = request_obj['from']
-
-    # Update request status
-    request_obj['status'] = 'rejected'
-    request_obj['rejected_at'] = datetime.now().isoformat()
-
-    # Update in sender's sent list
-    sent_requests = db['requests'].get(from_id, {}).get('sent', [])
-    for req in sent_requests:
-        if req['id'] == request_id:
-            req['status'] = 'rejected'
-            req['rejected_at'] = datetime.now().isoformat()
-            break
-
-    save_data(db)
-
-    socketio.emit('request_rejected', {
-        "request_id": request_id
-    }, room=f"user_{from_id}")
-
-    return jsonify({"success": True}), 200
+    return jsonify({
+        "message": "Account created successfully",
+        "token": token,
+        "user": public_user(user)
+    })
 
 
-# ==================== CONTACT ROUTES ====================
-
-@app.route('/api/contacts/<user_id>', methods=['GET'])
-def get_contacts(user_id):
-    db = load_data()
-    contacts = db['contacts'].get(user_id, [])
-    contact_list = []
-    for cid in contacts:
-        user = db['users'].get(cid)
-        if user:
-            safe = {k: v for k, v in user.items() if k != 'password'}
-            contact_list.append(safe)
-    return jsonify(contact_list), 200
-
-
-# ==================== MESSAGE ROUTES ====================
-
-@app.route('/api/messages/<chat_id>', methods=['GET'])
-def get_messages(chat_id):
-    db = load_data()
-    messages = db['messages'].get(chat_id, [])
-    return jsonify(messages), 200
-
-
-@app.route('/api/messages/<chat_id>', methods=['POST'])
-def send_message(chat_id):
+@app.route("/api/login", methods=["POST"])
+def login():
     data = request.get_json()
-    db = load_data()
 
-    msg = {
-        "id": f"msg_{uuid.uuid4().hex}",
-        "sender": data['sender'],
-        "type": data.get('type', 'text'),
-        "content": data['content'],
-        "timestamp": datetime.now().isoformat(),
-        "read": False,
-        "delivered": True,
-        "replyTo": data.get('replyTo'),
-        "edited": False
-    }
+    username = data.get("username", "").strip().lower()
+    password = data.get("password", "")
 
-    if chat_id not in db['messages']:
-        db['messages'][chat_id] = []
-    db['messages'][chat_id].append(msg)
+    with DB_LOCK:
+        db = read_db()
 
-    participants = chat_id.split('_')
-    other = [p for p in participants if p != data['sender']][0]
+        user = None
 
-    db['chats'][chat_id] = {
-        "participants": participants,
-        "lastMessage": msg,
-        "unread": db['chats'].get(chat_id, {}).get('unread', 0) + 1
-    }
+        for u in db["users"]:
+            if u["username"] == username:
+                user = u
+                break
 
-    save_data(db)
+        if not user or not check_password_hash(user["password_hash"], password):
+            return jsonify({"error": "Invalid username or password"}), 401
 
-    # Emit real-time to both users' rooms
-    socketio.emit('new_message', {"chat_id": chat_id, "message": msg}, room=f"user_{other}")
-    socketio.emit('new_message', {"chat_id": chat_id, "message": msg}, room=f"user_{data['sender']}")
+        token = secrets.token_urlsafe(32)
+        user["token"] = token
 
-    return jsonify({"success": True, "message": msg}), 201
+        write_db(db)
+
+    return jsonify({
+        "message": "Login successful",
+        "token": token,
+        "user": public_user(user)
+    })
 
 
-@app.route('/api/messages/<chat_id>/<msg_id>', methods=['PUT'])
-def edit_message(chat_id, msg_id):
+@app.route("/api/me", methods=["GET"])
+def me():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    return jsonify(public_user(user))
+
+
+@app.route("/api/profile/update", methods=["PUT"])
+def update_profile():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
     data = request.get_json()
-    db = load_data()
 
-    messages = db['messages'].get(chat_id, [])
-    for msg in messages:
-        if msg['id'] == msg_id and msg['sender'] == data['sender']:
-            msg['content'] = data['content']
-            msg['edited'] = True
-            msg['editTimestamp'] = datetime.now().isoformat()
-            save_data(db)
+    name = data.get("name", "").strip()
+    username = data.get("username", "").strip().lower()
+    about = data.get("about", "").strip()
 
-            participants = chat_id.split('_')
-            for p in participants:
-                socketio.emit('message_edited', {"chat_id": chat_id, "message": msg}, room=f"user_{p}")
-            return jsonify({"success": True}), 200
+    if not name or not username:
+        return jsonify({"error": "Name and username are required"}), 400
 
-    return jsonify({"error": "Message not found"}), 404
+    with DB_LOCK:
+        db = read_db()
+        user = find_user_by_chat_id(db, user["chat_id"])
 
+        for u in db["users"]:
+            if u["username"] == username and u["chat_id"] != user["chat_id"]:
+                return jsonify({"error": "Username already taken"}), 400
 
-@app.route('/api/messages/<chat_id>/<msg_id>', methods=['DELETE'])
-def delete_message(chat_id, msg_id):
+        user["name"] = name
+        user["username"] = username
+        user["about"] = about
+
+        write_db(db)
+
+    return jsonify({
+        "message": "Profile updated",
+        "user": public_user(user)
+    })
+
+@app.route("/api/upload/profile", methods=["POST"])
+def upload_profile():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    allowed_ext = [".jpg", ".jpeg", ".png", ".webp", ".gif"]
+    ext = os.path.splitext(file.filename)[1].lower()
+
+    if ext not in allowed_ext:
+        return jsonify({"error": "Only image files are allowed"}), 400
+
+    filename = secure_filename(user["chat_id"] + "_" + uuid.uuid4().hex + ext)
+
+    path = os.path.join(UPLOAD_FOLDERS["profiles"], filename)
+    file.save(path)
+
+    file_url = f"/uploads/profiles/{filename}"
+
+    with DB_LOCK:
+        db = read_db()
+        db_user = find_user_by_chat_id(db, user["chat_id"])
+
+        if not db_user:
+            return jsonify({"error": "User not found"}), 404
+
+        db_user["profile_image"] = file_url
+        write_db(db)
+
+    return jsonify({
+        "message": "Profile image uploaded",
+        "file_url": file_url
+    })
+
+@app.route("/api/profile/remove-dp", methods=["DELETE"])
+def remove_profile_dp():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    with DB_LOCK:
+        db = read_db()
+        db_user = find_user_by_chat_id(db, user["chat_id"])
+
+        if not db_user:
+            return jsonify({"error": "User not found"}), 404
+
+        old_image = db_user.get("profile_image")
+
+        # Remove DP from user data
+        db_user["profile_image"] = None
+
+        write_db(db)
+
+    # Optional: delete old image file from uploads folder
+    if old_image:
+        try:
+            # old_image example: /uploads/profiles/file.png
+            relative_path = old_image.replace("/uploads/", "")
+            file_path = os.path.join(UPLOAD_DIR, relative_path)
+
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print("Could not delete old profile image:", e)
+
+    return jsonify({
+        "message": "Profile image removed"
+    })
+
+@app.route("/api/contacts/add", methods=["POST"])
+def add_contact():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
     data = request.get_json()
-    db = load_data()
+    contact_id = data.get("chat_id", "").strip()
 
-    messages = db['messages'].get(chat_id, [])
-    db['messages'][chat_id] = [m for m in messages if not (m['id'] == msg_id and m['sender'] == data['sender'])]
+    if not contact_id:
+        return jsonify({"error": "Contact ID is required"}), 400
 
-    save_data(db)
+    with DB_LOCK:
+        db = read_db()
 
-    participants = chat_id.split('_')
-    for p in participants:
-        socketio.emit('message_deleted', {"chat_id": chat_id, "msg_id": msg_id}, room=f"user_{p}")
+        if contact_id == user["chat_id"]:
+            return jsonify({"error": "You cannot add yourself"}), 400
 
-    return jsonify({"success": True}), 200
+        contact_user = find_user_by_chat_id(db, contact_id)
+
+        if not contact_user:
+            return jsonify({"error": "User not found"}), 404
+
+        exists = any(
+            c["user_chat_id"] == user["chat_id"] and c["contact_chat_id"] == contact_id
+            for c in db["contacts"]
+        )
+
+        if exists:
+            return jsonify({"error": "Contact already added"}), 400
+
+        db["contacts"].append({
+            "user_chat_id": user["chat_id"],
+            "contact_chat_id": contact_id,
+            "created_at": now()
+        })
+
+        write_db(db)
+
+    return jsonify({
+        "message": "Contact added",
+        "contact": public_user(contact_user)
+    })
 
 
-@app.route('/api/messages/<chat_id>/read', methods=['POST'])
-def mark_read(chat_id):
+@app.route("/api/contacts", methods=["GET"])
+def get_contacts():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    contacts = []
+
+    for contact in db["contacts"]:
+        if contact["user_chat_id"] == user["chat_id"]:
+            contact_user = find_user_by_chat_id(db, contact["contact_chat_id"])
+
+            if contact_user:
+                msgs = conversation_messages(db, user["chat_id"], contact_user["chat_id"])
+                last_msg = msgs[-1] if msgs else None
+
+                contacts.append({
+                    "user": public_user(contact_user),
+                    "last_message": last_msg
+                })
+
+    return jsonify(contacts)
+
+
+@app.route("/api/messages/<contact_id>", methods=["GET"])
+def get_messages(contact_id):
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    contact_user = find_user_by_chat_id(db, contact_id)
+
+    if not contact_user:
+        return jsonify({"error": "Contact not found"}), 404
+
+    messages = conversation_messages(db, user["chat_id"], contact_id)
+
+    return jsonify(messages)
+
+
+@app.route("/api/messages/send", methods=["POST"])
+def send_message_api():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
     data = request.get_json()
-    user_id = data['user_id']
-    db = load_data()
 
-    messages = db['messages'].get(chat_id, [])
-    for msg in messages:
-        if msg['sender'] != user_id:
-            msg['read'] = True
+    receiver_id = data.get("receiver_id")
+    msg_type = data.get("type", "text")
+    text = data.get("text", "")
+    file_url = data.get("file_url")
+    reply_to = data.get("reply_to")
 
-    if chat_id in db['chats']:
-        db['chats'][chat_id]['unread'] = 0
+    with DB_LOCK:
+        db = read_db()
 
-    save_data(db)
-    return jsonify({"success": True}), 200
+        receiver = find_user_by_chat_id(db, receiver_id)
 
+        if not receiver:
+            return jsonify({"error": "Receiver not found"}), 404
 
-# ==================== MEDIA UPLOAD ====================
+        msg = create_message(db, user["chat_id"], receiver_id, msg_type, text, file_url, reply_to)
 
-@app.route('/api/upload/<media_type>', methods=['POST'])
-def upload_media(media_type):
-    if media_type not in ['image', 'video', 'audio']:
-        return jsonify({"success": False, "error": "Invalid type"}), 400
+        write_db(db)
 
-    if 'file' not in request.files:
-        return jsonify({"success": False, "error": "No file"}), 400
+    socketio.emit("receive_message", msg, room=user["chat_id"])
+    socketio.emit("receive_message", msg, room=receiver_id)
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"success": False, "error": "No file selected"}), 400
-
-    ext = file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
-
-    allowed = ALLOWED_IMAGE if media_type == 'image' else ALLOWED_VIDEO if media_type == 'video' else ALLOWED_AUDIO
-    if ext not in allowed:
-        return jsonify({"success": False, "error": "Invalid format"}), 400
-
-    filename = f"{uuid.uuid4().hex}.{ext}"
-    folder = f"{UPLOAD_FOLDER}/{media_type}s"
-    filepath = os.path.join(folder, filename)
-    file.save(filepath)
-
-    return jsonify({"success": True, "url": f"/uploads/{media_type}s/{filename}"}), 200
+    return jsonify(msg)
 
 
-@app.route('/uploads/<path:filename>')
-def serve_upload(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+@app.route("/api/messages/<message_id>/edit", methods=["PUT"])
+def edit_message(message_id):
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    data = request.get_json()
+    new_text = data.get("text", "").strip()
+
+    if not new_text:
+        return jsonify({"error": "Text is required"}), 400
+
+    with DB_LOCK:
+        db = read_db()
+
+        msg = next((m for m in db["messages"] if m["id"] == message_id), None)
+
+        if not msg:
+            return jsonify({"error": "Message not found"}), 404
+
+        if msg["sender_id"] != user["chat_id"]:
+            return jsonify({"error": "You can edit only your own message"}), 403
+
+        if msg["deleted"]:
+            return jsonify({"error": "Cannot edit deleted message"}), 400
+
+        if msg["type"] != "text":
+            return jsonify({"error": "Only text messages can be edited"}), 400
+
+        msg["text"] = new_text
+        msg["edited"] = True
+        msg["updated_at"] = now()
+
+        write_db(db)
+
+    socketio.emit("message_edited", msg, room=msg["sender_id"])
+    socketio.emit("message_edited", msg, room=msg["receiver_id"])
+
+    return jsonify(msg)
 
 
-# ==================== SOCKET.IO ====================
+@app.route("/api/messages/<message_id>/delete", methods=["DELETE"])
+def delete_message(message_id):
+    db, user, error, status = require_auth()
 
-@socketio.on('connect')
-def on_connect():
-    print('Client connected')
+    if error:
+        return error, status
 
-@socketio.on('disconnect')
-def on_disconnect():
-    print('Client disconnected')
+    data = request.get_json(silent=True) or {}
+    mode = data.get("mode", "everyone")
 
-@socketio.on('join_user')
-def on_join_user(data):
-    room = f"user_{data['user_id']}"
-    join_room(room)
-    print(f'User {data["user_id"]} joined room {room}')
+    with DB_LOCK:
+        db = read_db()
 
-@socketio.on('leave_user')
-def on_leave_user(data):
-    room = f"user_{data['user_id']}"
-    leave_room(room)
+        msg = next((m for m in db["messages"] if m["id"] == message_id), None)
 
-@socketio.on('join_chat')
-def on_join_chat(data):
-    room = data['chat_id']
-    join_room(room)
+        if not msg:
+            return jsonify({"error": "Message not found"}), 404
 
-@socketio.on('leave_chat')
-def on_leave_chat(data):
-    room = data['chat_id']
-    leave_room(room)
+        if mode == "me":
+            if user["chat_id"] not in msg["deleted_for"]:
+                msg["deleted_for"].append(user["chat_id"])
+        else:
+            if msg["sender_id"] != user["chat_id"]:
+                return jsonify({"error": "Only sender can delete for everyone"}), 403
 
-@socketio.on('typing')
-def on_typing(data):
-    emit('typing', {"user_id": data['user_id']}, room=data['chat_id'], include_self=False)
+            msg["deleted"] = True
+            msg["text"] = "This message was deleted"
+            msg["file_url"] = None
+            msg["updated_at"] = now()
+
+        write_db(db)
+
+    socketio.emit("message_deleted", msg, room=msg["sender_id"])
+    socketio.emit("message_deleted", msg, room=msg["receiver_id"])
+
+    return jsonify({
+        "message": "Message deleted",
+        "data": msg
+    })
 
 
-# ==================== RUN ====================
+@app.route("/api/upload/<kind>", methods=["POST"])
+def upload_file(kind):
+    db, user, error, status = require_auth()
 
-init_db()
+    if error:
+        return error, status
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True)
+    if kind not in ["images", "videos", "voice"]:
+        return jsonify({"error": "Invalid upload type"}), 400
+
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    filename = secure_filename(user["chat_id"] + "_" + uuid.uuid4().hex + ext)
+
+    path = os.path.join(UPLOAD_FOLDERS[kind], filename)
+    file.save(path)
+
+    file_url = f"/uploads/{kind}/{filename}"
+
+    return jsonify({
+        "message": "File uploaded",
+        "file_url": file_url
+    })
+
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    setting = next((s for s in db["settings"] if s["chat_id"] == user["chat_id"]), None)
+
+    if not setting:
+        setting = {
+            "chat_id": user["chat_id"],
+            "theme": "light"
+        }
+
+    return jsonify(setting)
+
+
+@app.route("/api/settings/theme", methods=["PUT"])
+def update_theme():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    data = request.get_json()
+    theme = data.get("theme", "light")
+
+    with DB_LOCK:
+        db = read_db()
+
+        setting = next((s for s in db["settings"] if s["chat_id"] == user["chat_id"]), None)
+
+        if not setting:
+            db["settings"].append({
+                "chat_id": user["chat_id"],
+                "theme": theme
+            })
+        else:
+            setting["theme"] = theme
+
+        write_db(db)
+
+    return jsonify({
+        "message": "Theme updated",
+        "theme": theme
+    })
+
+
+@app.route("/api/account/delete", methods=["DELETE"])
+def delete_account():
+    db, user, error, status = require_auth()
+
+    if error:
+        return error, status
+
+    with DB_LOCK:
+        db = read_db()
+        chat_id = user["chat_id"]
+
+        db["users"] = [u for u in db["users"] if u["chat_id"] != chat_id]
+
+        db["contacts"] = [
+            c for c in db["contacts"]
+            if c["user_chat_id"] != chat_id and c["contact_chat_id"] != chat_id
+        ]
+
+        db["messages"] = [
+            m for m in db["messages"]
+            if m["sender_id"] != chat_id and m["receiver_id"] != chat_id
+        ]
+
+        db["settings"] = [
+            s for s in db["settings"]
+            if s["chat_id"] != chat_id
+        ]
+
+        write_db(db)
+
+    return jsonify({
+        "message": "Account deleted successfully"
+    })
+
+
+@socketio.on("connect")
+def socket_connect(auth):
+    token = None
+
+    if auth:
+        token = auth.get("token")
+
+    db = read_db()
+    user = find_user_by_token(db, token)
+
+    if not user:
+        return False
+
+    SID_USERS[request.sid] = user["chat_id"]
+    join_room(user["chat_id"])
+
+    emit("connected", {
+        "message": "Connected",
+        "chat_id": user["chat_id"]
+    })
+
+
+@socketio.on("disconnect")
+def socket_disconnect():
+    if request.sid in SID_USERS:
+        del SID_USERS[request.sid]
+
+
+@socketio.on("send_message")
+def socket_send_message(data):
+    sender_id = SID_USERS.get(request.sid)
+
+    if not sender_id:
+        return
+
+    receiver_id = data.get("receiver_id")
+    msg_type = data.get("type", "text")
+    text = data.get("text", "")
+    file_url = data.get("file_url")
+    reply_to = data.get("reply_to")
+
+    with DB_LOCK:
+        db = read_db()
+
+        receiver = find_user_by_chat_id(db, receiver_id)
+
+        if not receiver:
+            emit("error_message", {"error": "Receiver not found"})
+            return
+
+        msg = create_message(db, sender_id, receiver_id, msg_type, text, file_url, reply_to)
+
+        write_db(db)
+
+    socketio.emit("receive_message", msg, room=sender_id)
+    socketio.emit("receive_message", msg, room=receiver_id)
+
+
+if __name__ == "__main__":
+    init_db()
+    print("Backend running on http://127.0.0.1:5000")
+    socketio.run(app, host="127.0.0.1", port=5000, debug=True)
