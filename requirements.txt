@@ -1,5 +1,6 @@
-Flask==3.0.0
-Flask-CORS==4.0.0
-Flask-SocketIO==5.3.0
-Werkzeug==3.0.0
-gunicorn==23.0.0
+flask
+flask-cors
+flask-socketio
+simple-websocket
+werkzeug
+gunicorn
