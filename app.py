@@ -10,6 +10,10 @@ from datetime import datetime
 import re
 import uuid
 
+
+# Render ke liye port fix
+port = int(os.environ.get('PORT', 10000))
+
 app = Flask(__name__, static_folder='../frontend', static_url_path='/static')
 app.config['SECRET_KEY'] = 'secret!'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
@@ -443,6 +447,4 @@ def handle_delete_message(data):
 
 
 if __name__ == '__main__':
-    import os
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, debug=False, host='0.0.0.0', port=port)
+    socketio.run(app, host='0.0.0.0', port=port)
