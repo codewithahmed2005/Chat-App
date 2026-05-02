@@ -915,6 +915,153 @@ socket.on('message_edited', function(data) {
     }
 });
 
+// Add these functions to existing script.js
+
+// ============ MOBILE NAVIGATION ============
+
+function goToChatScreen(friendId, friendName) {
+    currentChatWith = friendId;
+    document.getElementById('contacts-screen').classList.add('hidden');
+    document.getElementById('chat-screen').classList.remove('hidden');
+    document.getElementById('chat-with-name').innerText = friendName || friendId;
+    
+    // load messages
+    document.getElementById('messages').innerHTML = '<div class="welcome-message">💭 Loading messages...</div>';
+    
+    fetch('/get_messages/' + currentUserId + '/' + friendId)
+    .then(res => res.json())
+    .then(data => {
+        let messagesDiv = document.getElementById('messages');
+        messagesDiv.innerHTML = '';
+        if (data.messages && data.messages.length === 0) {
+            messagesDiv.innerHTML = '<div class="welcome-message">💭 No messages yet. Send a message!</div>';
+        } else if (data.messages) {
+            for (let i = 0; i < data.messages.length; i++) {
+                let msg = data.messages[i];
+                if (!msg.is_deleted) {
+                    let isMine = msg.from_id === currentUserId;
+                    displayMessageFromData(msg, isMine);
+                }
+            }
+        }
+    });
+}
+
+function goBackToContacts() {
+    currentChatWith = null;
+    document.getElementById('chat-screen').classList.add('hidden');
+    document.getElementById('contacts-screen').classList.remove('hidden');
+    document.getElementById('message-input').value = '';
+    
+    // refresh friends list
+    loadFriends();
+    loadFriendRequests();
+}
+
+// Update startChat function for desktop compatibility
+function startChat(friendId) {
+    // For mobile, get friend name
+    let friendName = friendId;
+    // Try to find friend name from friends list
+    let friendDiv = document.querySelector(`.friend-item[data-id='${friendId}']`);
+    if (friendDiv) {
+        let nameSpan = friendDiv.querySelector('.friend-name');
+        if (nameSpan) friendName = nameSpan.innerText;
+    }
+    goToChatScreen(friendId, friendName);
+}
+
+// Update loadFriends function to create friend items
+function loadFriends() {
+    fetch('/get_friends/' + currentUserId)
+    .then(res => res.json())
+    .then(data => {
+        friendsList = data.friends;
+        let html = '';
+        if(friendsList.length === 0) {
+            html = '<div class="empty-state" style="padding: 40px; text-align: center; color: #a0aec0;">No friends yet.<br>🔍 Search and add someone!</div>';
+        } else {
+            for(let i = 0; i < friendsList.length; i++) {
+                let friendId = friendsList[i];
+                html += `<div class="friend-item" data-id="${friendId}" onclick="startChat('${friendId}')">
+                            <div class="friend-info">
+                                <div class="friend-avatar">👤</div>
+                                <div class="friend-details">
+                                    <div class="friend-name">${friendId}</div>
+                                    <div class="friend-id">ID: ${friendId}</div>
+                                </div>
+                            </div>
+                        </div>`;
+            }
+        }
+        document.getElementById('friends-list').innerHTML = html;
+        document.getElementById('friend-count').innerHTML = '(' + friendsList.length + ')';
+    });
+}
+
+// Update loadFriendRequests function
+function loadFriendRequests() {
+    fetch('/get_requests/' + currentUserId)
+    .then(res => res.json())
+    .then(data => {
+        if(data.requests && data.requests.length > 0) {
+            document.getElementById('requests-section').classList.remove('hidden');
+            let html = '';
+            for(let i = 0; i < data.requests.length; i++) {
+                let reqId = data.requests[i];
+                html += `<div class="request-item">
+                            <div class="friend-info">
+                                <div class="friend-avatar">👤</div>
+                                <div class="friend-details">
+                                    <div class="friend-name">${reqId}</div>
+                                    <div class="friend-id">ID: ${reqId}</div>
+                                </div>
+                            </div>
+                            <button onclick="acceptRequest('${reqId}')">Accept</button>
+                        </div>`;
+            }
+            document.getElementById('requests-list').innerHTML = html;
+        } else {
+            document.getElementById('requests-section').classList.add('hidden');
+        }
+    });
+}
+
+// Update searchUser function result display
+function searchUser() {
+    let searchId = document.getElementById('search-id').value;
+    
+    if(!searchId) {
+        document.getElementById('search-result').innerHTML = '❌ Please enter an ID';
+        document.getElementById('search-result').classList.remove('hidden');
+        return;
+    }
+    
+    if(searchId === currentUserId) {
+        document.getElementById('search-result').innerHTML = '❌ You cannot add yourself!';
+        document.getElementById('search-result').classList.remove('hidden');
+        return;
+    }
+    
+    fetch('/search_user/' + searchId)
+    .then(res => res.json())
+    .then(data => {
+        if(data.status === 'success') {
+            document.getElementById('search-result').innerHTML = 
+                '✅ Found: ' + data.username + '<br><button onclick="sendFriendRequest(\'' + data.user_id + '\')">➕ Add Friend</button>';
+            document.getElementById('search-result').classList.remove('hidden');
+        } else {
+            document.getElementById('search-result').innerHTML = '❌ User not found';
+            document.getElementById('search-result').classList.remove('hidden');
+        }
+        
+        // auto hide after 5 seconds
+        setTimeout(() => {
+            document.getElementById('search-result').classList.add('hidden');
+        }, 5000);
+    });
+}
+
 socket.on('message_deleted', function(data) {
     let messages = document.querySelectorAll('.message');
     for (let msg of messages) {
