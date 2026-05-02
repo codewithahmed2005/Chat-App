@@ -1,3 +1,6 @@
 flask
 flask-socketio
+flask-cors
+python-socketio
+eventlet
 simple-websocket
