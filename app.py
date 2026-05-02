@@ -1,4 +1,4 @@
-from flask import Flask, send_from_directory, request, jsonify
+from flask import Flask, request, send_from_directory, jsonify
 from flask_socketio import SocketIO, emit, join_room
 from flask_cors import CORS
 import sqlite3
@@ -307,6 +307,7 @@ def get_messages(user_id, friend_id):
     c.execute("""SELECT message_id, from_id, content, message_type, file_name, is_edited, is_deleted, reply_to, timestamp 
                  FROM messages 
                  WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)
+                 AND is_deleted=0
                  ORDER BY timestamp ASC""", 
               (user_id, friend_id, friend_id, user_id))
     messages = c.fetchall()
@@ -325,6 +326,7 @@ def get_messages(user_id, friend_id):
             'reply_to': msg[7],
             'timestamp': msg[8]
         })
+    print(f"📥 Loaded {len(result)} messages for {user_id} and {friend_id}")
     return jsonify({'messages': result})
 
 @app.route('/toggle_dark_mode', methods=['POST'])
@@ -376,6 +378,7 @@ def handle_private_message(data):
             file_path = save_file(file_data, file_name)
             content = file_path
     
+    # Save to database
     conn = sqlite3.connect('chat.db')
     c = conn.cursor()
     c.execute("""INSERT INTO messages (message_id, from_id, to_id, content, message_type, file_name, reply_to, timestamp) 
@@ -384,6 +387,9 @@ def handle_private_message(data):
     conn.commit()
     conn.close()
     
+    print(f"💾 Message saved: {message_id} from {from_id} to {to_id}")
+    
+    # Send to receiver
     emit('private_message', {
         'message_id': message_id,
         'from_id': from_id,
@@ -394,6 +400,7 @@ def handle_private_message(data):
         'timestamp': timestamp
     }, room=to_id)
     
+    # Also send back to sender for confirmation
     emit('private_message', {
         'message_id': message_id,
         'from_id': from_id,
@@ -444,4 +451,4 @@ def handle_delete_message(data):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+    socketio.run(app, host='0.0.0.0', port=port, debug=True)
