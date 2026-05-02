@@ -10,7 +10,7 @@ from datetime import datetime
 import re
 import uuid
 
-app = Flask(__name__, static_folder='../frontend', static_url_path='')
+app = Flask(__name__, static_folder='../frontend', static_url_path='/static')
 app.config['SECRET_KEY'] = 'secret!'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 CORS(app)
@@ -441,5 +441,8 @@ def handle_delete_message(data):
         'delete_for_everyone': delete_for_everyone
     }, broadcast=True)
 
+
 if __name__ == '__main__':
-    socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, debug=False, host='0.0.0.0', port=port)
