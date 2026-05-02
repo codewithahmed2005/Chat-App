@@ -307,7 +307,6 @@ def get_messages(user_id, friend_id):
     c.execute("""SELECT message_id, from_id, content, message_type, file_name, is_edited, is_deleted, reply_to, timestamp 
                  FROM messages 
                  WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)
-                 AND is_deleted=0
                  ORDER BY timestamp ASC""", 
               (user_id, friend_id, friend_id, user_id))
     messages = c.fetchall()
@@ -315,18 +314,19 @@ def get_messages(user_id, friend_id):
     
     result = []
     for msg in messages:
-        result.append({
-            'message_id': msg[0],
-            'from_id': msg[1],
-            'content': msg[2],
-            'message_type': msg[3],
-            'file_name': msg[4],
-            'is_edited': msg[5],
-            'is_deleted': msg[6],
-            'reply_to': msg[7],
-            'timestamp': msg[8]
-        })
-    print(f"📥 Loaded {len(result)} messages for {user_id} and {friend_id}")
+        if msg[6] == 0:  # is_deleted = 0
+            result.append({
+                'message_id': msg[0],
+                'from_id': msg[1],
+                'content': msg[2],
+                'message_type': msg[3],
+                'file_name': msg[4],
+                'is_edited': msg[5],
+                'is_deleted': msg[6],
+                'reply_to': msg[7],
+                'timestamp': msg[8]
+            })
+    print(f"📥 Loaded {len(result)} messages for chat between {user_id} and {friend_id}")
     return jsonify({'messages': result})
 
 @app.route('/toggle_dark_mode', methods=['POST'])
@@ -347,7 +347,7 @@ def toggle_dark_mode():
 def handle_join(data):
     user_id = data['user_id']
     join_room(user_id)
-    print(f'✅ {user_id} joined')
+    print(f'✅ {user_id} joined room')
 
 @socketio.on('typing')
 def handle_typing(data):
@@ -379,15 +379,17 @@ def handle_private_message(data):
             content = file_path
     
     # Save to database
-    conn = sqlite3.connect('chat.db')
-    c = conn.cursor()
-    c.execute("""INSERT INTO messages (message_id, from_id, to_id, content, message_type, file_name, reply_to, timestamp) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", 
-              (message_id, from_id, to_id, content, message_type, file_name, reply_to, timestamp))
-    conn.commit()
-    conn.close()
-    
-    print(f"💾 Message saved: {message_id} from {from_id} to {to_id}")
+    try:
+        conn = sqlite3.connect('chat.db')
+        c = conn.cursor()
+        c.execute("""INSERT INTO messages (message_id, from_id, to_id, content, message_type, file_name, reply_to, timestamp) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", 
+                  (message_id, from_id, to_id, content, message_type, file_name, reply_to, timestamp))
+        conn.commit()
+        conn.close()
+        print(f"💾 MESSAGE SAVED! ID: {message_id} | From: {from_id} | To: {to_id} | Content: {content[:50]}")
+    except Exception as e:
+        print(f"❌ Error saving message: {e}")
     
     # Send to receiver
     emit('private_message', {
