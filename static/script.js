@@ -206,12 +206,6 @@ function logout() {
     if (loginPassword) loginPassword.value = '';
     if (loginResult) loginResult.innerHTML = '';
     
-    const chatPanel = document.getElementById('chat-panel');
-    const noChatSelected = document.getElementById('no-chat-selected');
-    if (chatPanel) chatPanel.classList.add('hidden');
-    if (noChatSelected) noChatSelected.classList.remove('hidden');
-    
-    // also hide chat screen if visible
     const chatScreen = document.getElementById('chat-screen');
     const contactsScreen = document.getElementById('contacts-screen');
     if (chatScreen) chatScreen.classList.add('hidden');
@@ -552,7 +546,7 @@ function handleTyping() {
     }, 1000);
 }
 
-// ============ CHAT FUNCTIONS - MOBILE ============
+// ============ CHAT FUNCTIONS - WITH PERSISTENT MESSAGES ============
 
 function startChat(friendId) {
     goToChatScreen(friendId, friendId);
@@ -569,18 +563,23 @@ function goToChatScreen(friendId, friendName) {
     if (chatScreen) chatScreen.classList.remove('hidden');
     if (chatWithName) chatWithName.innerText = friendName || friendId;
     
-    // load messages
+    // Show loading state
     const messagesDiv = document.getElementById('messages');
-    if (messagesDiv) messagesDiv.innerHTML = '<div class="welcome-message">💭 Loading messages...</div>';
+    if (messagesDiv) {
+        messagesDiv.innerHTML = '<div class="welcome-message" style="text-align:center; padding:20px;">📥 Loading messages...</div>';
+    }
     
+    // Load messages from database
     fetch('/get_messages/' + currentUserId + '/' + friendId)
     .then(res => res.json())
     .then(data => {
         if (messagesDiv) {
             messagesDiv.innerHTML = '';
+            
             if (data.messages && data.messages.length === 0) {
                 messagesDiv.innerHTML = '<div class="welcome-message">💭 No messages yet. Send a message!</div>';
             } else if (data.messages) {
+                // Display messages in correct order
                 for (let i = 0; i < data.messages.length; i++) {
                     let msg = data.messages[i];
                     if (!msg.is_deleted) {
@@ -588,7 +587,16 @@ function goToChatScreen(friendId, friendName) {
                         displayMessageFromData(msg, isMine);
                     }
                 }
+                
+                // Scroll to bottom
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
+        }
+    })
+    .catch(error => {
+        console.error('Error loading messages:', error);
+        if (messagesDiv) {
+            messagesDiv.innerHTML = '<div class="welcome-message" style="text-align:center; padding:20px; color:red;">❌ Error loading messages</div>';
         }
     });
 }
@@ -604,6 +612,7 @@ function goBackToContacts() {
     if (contactsScreen) contactsScreen.classList.remove('hidden');
     if (messageInput) messageInput.value = '';
     
+    // Refresh friends and requests
     loadFriends();
     loadFriendRequests();
 }
@@ -613,6 +622,17 @@ function sendPrivateMessage() {
     
     if(!msg || !currentChatWith) return;
     
+    let now = new Date();
+    let timeString = now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+    
+    // Display message immediately
+    displayMessage(currentUserId, msg, timeString, true, 'text', null);
+    
+    // Clear input
+    const messageInput = document.getElementById('message-input');
+    if (messageInput) messageInput.value = '';
+    
+    // Send to server
     socket.emit('private_message', {
         to_id: currentChatWith,
         from_id: currentUserId,
@@ -623,13 +643,7 @@ function sendPrivateMessage() {
         reply_to: null
     });
     
-    let now = new Date();
-    let timeString = now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
-    displayMessage(currentUserId, msg, timeString, true, 'text', null);
-    
-    const messageInput = document.getElementById('message-input');
-    if (messageInput) messageInput.value = '';
-    
+    // Stop typing indicator
     socket.emit('typing', {
         to_id: currentChatWith,
         from_id: currentUserId,
@@ -641,6 +655,7 @@ function displayMessage(sender, content, timestamp, isMine, type, fileName) {
     let messagesDiv = document.getElementById('messages');
     if (!messagesDiv) return;
     
+    // Remove welcome message if exists
     if(messagesDiv.children.length === 1 && messagesDiv.children[0].classList) {
         if(messagesDiv.children[0].classList.contains('welcome-message')) {
             messagesDiv.innerHTML = '';
@@ -664,6 +679,10 @@ function displayMessage(sender, content, timestamp, isMine, type, fileName) {
 function displayMessageFromData(msg, isMine) {
     let messagesDiv = document.getElementById('messages');
     if (!messagesDiv) return;
+    
+    // Check if message already exists (avoid duplicates)
+    let existingMsg = messagesDiv.querySelector(`[data-message-id="${msg.message_id}"]`);
+    if (existingMsg) return;
     
     let div = document.createElement('div');
     div.className = 'message ' + (isMine ? 'my-message' : 'friend-message');
@@ -737,7 +756,7 @@ function showMessageOptions(event, messageId, content, isMine, senderName) {
     menu.style.boxShadow = '0 5px 15px rgba(0,0,0,0.2)';
     menu.style.padding = '5px 0';
     menu.style.zIndex = '1000';
-    menu.style.minWidth = '100px';
+    menu.style.minWidth = '120px';
     
     let menuItems = menu.querySelectorAll('div');
     menuItems.forEach(item => {
