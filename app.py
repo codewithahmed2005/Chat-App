@@ -1,4 +1,4 @@
-from flask import Flask, request, send_from_directory, jsonify
+from flask import Flask, send_from_directory, request, jsonify
 from flask_socketio import SocketIO, emit, join_room
 from flask_cors import CORS
 import sqlite3
@@ -10,11 +10,7 @@ from datetime import datetime
 import re
 import uuid
 
-
-# Render ke liye port fix
-port = int(os.environ.get('PORT', 10000))
-
-app = Flask(__name__, static_folder='../frontend', static_url_path='/static')
+app = Flask(__name__, static_folder='static', static_url_path='')
 app.config['SECRET_KEY'] = 'secret!'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 CORS(app)
@@ -93,7 +89,6 @@ def save_file(file_data, file_name):
     return f"/uploads/{unique_name}"
 
 def save_profile_pic(file_data, user_id):
-    # remove old profile pic if exists
     old_files = [f for f in os.listdir(PROFILE_FOLDER) if f.startswith(f"{user_id}_")]
     for old in old_files:
         try:
@@ -101,7 +96,6 @@ def save_profile_pic(file_data, user_id):
         except:
             pass
     
-    # save new one
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     file_path = os.path.join(PROFILE_FOLDER, f"{user_id}_{timestamp}.jpg")
     with open(file_path, 'wb') as f:
@@ -109,9 +103,14 @@ def save_profile_pic(file_data, user_id):
     
     return f"/profile_pics/{os.path.basename(file_path)}"
 
+# ============ SERVE FRONTEND ============
 @app.route('/')
 def serve_index():
-    return send_from_directory('../frontend', 'index.html')
+    return send_from_directory('static', 'index.html')
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
@@ -121,6 +120,7 @@ def uploaded_file(filename):
 def profile_pic(filename):
     return send_from_directory(PROFILE_FOLDER, filename)
 
+# ============ API ROUTES ============
 @app.route('/register', methods=['POST'])
 def register():
     try:
@@ -148,7 +148,6 @@ def register():
         
         return jsonify({'status': 'success', 'user_id': user_id, 'username': username})
     except Exception as e:
-        print("Register error:", str(e))
         return jsonify({'status': 'error', 'message': str(e)})
 
 @app.route('/login', methods=['POST'])
@@ -210,13 +209,11 @@ def update_profile():
         conn = sqlite3.connect('chat.db')
         c = conn.cursor()
         
-        # check if username already taken by other user
         c.execute("SELECT * FROM users WHERE username=? AND user_id!=?", (username, user_id))
         if c.fetchone():
             conn.close()
             return jsonify({'status': 'error', 'message': 'Username already taken'})
         
-        # update profile
         if profile_pic is not None:
             if profile_pic == '':
                 c.execute("UPDATE users SET username=?, fullname=?, profile_pic=? WHERE user_id=?", 
@@ -343,7 +340,7 @@ def toggle_dark_mode():
     conn.close()
     return jsonify({'status': 'success'})
 
-# Socket events
+# ============ SOCKET EVENTS ============
 @socketio.on('join')
 def handle_join(data):
     user_id = data['user_id']
@@ -445,6 +442,6 @@ def handle_delete_message(data):
         'delete_for_everyone': delete_for_everyone
     }, broadcast=True)
 
-
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=port)
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port, debug=False)
