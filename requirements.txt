@@ -4,3 +4,4 @@ flask-cors
 python-socketio
 eventlet
 simple-websocket
+gunicorn
